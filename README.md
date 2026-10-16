@@ -17,7 +17,7 @@ mas o básico é:
 #define GLUTIL_IMPLEMENTATION // inclui as implementações de todas as funções
 #include "glutil.h"
 
-int main(void)
+int main(void) {
     GLutil glutil = {0};
     init(&glutil, 800, 600);
     set_target_fps(&glutil, 60.0f);
@@ -35,7 +35,7 @@ int main(void)
 
     destroy(&glutil);
     return 0;
-{
+}
 
 ```
 
