@@ -12,8 +12,10 @@ não sei quais versões necessárias, mas honestamente, qualquer distro linux pr
 na pasta 'examples' tem uns programas mais interessantes feitos com o GLutil.h,
 mas o básico é:
 ```c
+// arquivo main.c
 
 #define GLUTIL_IMPLEMENTATION // inclui as implementações de todas as funções
+#include "glutil.h"
 
 int main(void)
     GLutil glutil = {0};
@@ -35,8 +37,15 @@ int main(void)
     return 0;
 {
 
-
 ```
+
+e então compilaria e rodaria com:
+```bash
+gcc -o main main.c -lX11 -lGL -lm
+./main
+```
+
+
 
 
 # Referências
