@@ -19,7 +19,7 @@ mas o básico é:
 
 int main(void)
     GLutil glutil = {0};
-    init(&glutil, WW, WH);
+    init(&glutil, 800, 600);
     set_target_fps(&glutil, 60.0f);
 
     for (;;) {
