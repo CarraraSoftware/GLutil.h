@@ -153,7 +153,7 @@ uint64_t GLutil_frame_delta_nanos(GLutil *glutil);
 void GLutil_end_frame(GLutil *glutil);
 void GLutil_present(GLutil* glutil);
 void GLutil_set_target_fps(GLutil* glutil, float fps);
-XEvent GLutil_next_event(GLutil glutil);
+bool GLutil_next_event(GLutil* glutil, XEvent* event);
 
 
 #endif // GLUTIL_H_
