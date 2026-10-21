@@ -77,6 +77,7 @@
 #define end_frame         GLutil_end_frame
 #define present           GLutil_present
 #define set_target_fps    GLutil_set_target_fps
+#define next_event        GLutil_next_event
 
 #endif // GLUTIL_INCLUDE_PREFIX
 
@@ -85,6 +86,18 @@
 
 #define GLUTIL_COLOR(r, g, b) (Color){ .red = (r), .green = (g), .blue = (b), .alpha = 255 }
 #define GLUTIL_BLACK COLOR(0, 0, 0)
+
+#define ALL_INPUT_MASKS ( \
+        KeyPressMask       | KeyReleaseMask         | ButtonPressMask          \
+      | ButtonReleaseMask  | EnterWindowMask        | LeaveWindowMask          \
+      | PointerMotionMask  | PointerMotionHintMask  | Button1MotionMask        \
+      | Button2MotionMask  | Button3MotionMask      | Button4MotionMask        \
+      | Button5MotionMask  | ButtonMotionMask       | KeymapStateMask          \
+      | ExposureMask       | VisibilityChangeMask   | StructureNotifyMask      \
+      | ResizeRedirectMask | SubstructureNotifyMask | SubstructureRedirectMask \
+      | FocusChangeMask    | PropertyChangeMask     | ColormapChangeMask       \
+      | OwnerGrabButtonMask )
+
 
 typedef struct GLutil {
     Window       window;
@@ -139,6 +152,7 @@ uint64_t GLutil_frame_delta_nanos(GLutil *glutil);
 void GLutil_end_frame(GLutil *glutil);
 void GLutil_present(GLutil* glutil);
 void GLutil_set_target_fps(GLutil* glutil, float fps);
+XEvent GLutil_next_event(GLutil glutil);
 
 
 #endif // GLUTIL_H_
@@ -151,6 +165,45 @@ void GLutil_set_target_fps(GLutil* glutil, float fps);
 
 // #define GLUTIL_IMPLEMENTATION 
 #ifdef GLUTIL_IMPLEMENTATION
+
+char* INPUT_TYPE_NAMES[] = {
+    [0]  = "[RESERVED]",
+    [1]  = "[RESERVED]",
+    [2]  = "KeyPress",
+    [3]  = "KeyRelease",
+    [4]  = "ButtonPress",
+    [5]  = "ButtonRelease",
+    [6]  = "MotionNotify",
+    [7]  = "EnterNotify",
+    [8]  = "LeaveNotify",
+    [9]  = "FocusIn",
+    [10] = "FocusOut",
+    [11] = "KeymapNotify",
+    [12] = "Expose",
+    [13] = "GraphicsExpose",
+    [14] = "NoExpose",
+    [15] = "VisibilityNotify",
+    [16] = "CreateNotify",
+    [17] = "DestroyNotify",
+    [18] = "UnmapNotify",
+    [19] = "MapNotify",
+    [20] = "MapRequest",
+    [21] = "ReparentNotify",
+    [22] = "ConfigureNotify",
+    [23] = "ConfigureRequest",
+    [24] = "GravityNotify",
+    [25] = "ResizeRequest",
+    [26] = "CirculateNotify",
+    [27] = "CirculateRequest",
+    [28] = "PropertyNotify",
+    [29] = "SelectionClear",
+    [30] = "SelectionRequest",
+    [31] = "SelectionNotify",
+    [32] = "ColormapNotify",
+    [33] = "ClientMessage",
+    [34] = "MappingNotify",
+    [35] = "GenericEvent",
+};
 
 
 /*******************************************************************************
@@ -264,7 +317,7 @@ void GLutil_make_fbc_and_vi(GLutil* glutil)
 
 void GLutil_make_context(GLutil* glutil)
 {
-    XSelectInput(glutil->display, glutil->window, ExposureMask | KeyPressMask);
+    XSelectInput(glutil->display, glutil->window, ALL_INPUT_MASKS);
     int32_t context_attribs[7] = { 0, 0, 0, 0, 0, 0, 0 };
     context_attribs[0] = GLX_CONTEXT_PROFILE_MASK_ARB;
     if (profile == GL_CORE) 
@@ -362,6 +415,12 @@ void GLutil_set_target_fps(GLutil* glutil, float fps)
 {
     float target_microsecs = (1000000.0f / fps);
     glutil->target_sleep_us = (uint64_t)target_microsecs;
+}
+
+
+bool GLutil_next_event(Glutil glutil, XEvent* event)
+{
+    return XCheckMaskEvent( glutil.display, ALL_INPUT_MASKS , event );
 }
 
 
