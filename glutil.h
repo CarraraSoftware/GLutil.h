@@ -419,9 +419,9 @@ void GLutil_set_target_fps(GLutil* glutil, float fps)
 }
 
 
-bool GLutil_next_event(Glutil glutil, XEvent* event)
+bool GLutil_next_event(GLutil* glutil, XEvent* event)
 {
-    return XCheckMaskEvent( glutil.display, ALL_INPUT_MASKS , event );
+    return XCheckMaskEvent( glutil->display, ALL_INPUT_MASKS , event );
 }
 
 
