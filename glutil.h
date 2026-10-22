@@ -37,15 +37,18 @@
 #include <X11/Xlib.h>
 #include <GL/glx.h>
 
+#include <assert.h>
+#include <errno.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 
-#ifndef GLUTIL_INCLUDE_PREFIX
+#ifndef GLUTIL_FORCE_PREFIX
 
 #define MAP    GLUTIL_MAP
 #define RAND   GLUTIL_RAND
@@ -79,6 +82,14 @@
 #define present           GLutil_present
 #define set_target_fps    GLutil_set_target_fps
 #define next_event        GLutil_next_event
+
+#define flush_shaders      GLutil_flush_shaders
+#define load_shader        GLutil_load_shader
+#define use_shaders        GLutil_use_shaders
+#define stop_using_shaders GLutil_stop_using_shaders
+
+#define load_vertices_and_faces GLutil_load_vertices_and_faces
+#define draw                    GLutil_draw
 
 #endif // GLUTIL_INCLUDE_PREFIX
 
@@ -128,6 +139,13 @@ typedef struct  {
     float y;
 } GLutil_Vec2f;
 
+
+ typedef enum {
+    GLUTIL_VERT_SHADER,
+    GLUTIL_FRAG_SHADER,
+} GLutil_ShaderType;
+
+
 void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h);            // inicializa Display, Window e o OpenGLContext. e mais alguns estados internos
 void GLutil_destroy(GLutil* glutil);                                         // desaloca e fecha todos os recursos alocados por GLutil.h
 
@@ -155,6 +173,25 @@ void GLutil_present(GLutil* glutil);
 void GLutil_set_target_fps(GLutil* glutil, float fps);
 bool GLutil_next_event(GLutil* glutil, XEvent* event);
 
+void GLutil_flush_shaders();
+void GLutil_load_shader(const char* name, GLutil_ShaderType type);
+bool GLutil_use_shaders();
+void GLutil_stop_using_shaders();
+
+void GLutil_load_vertices_and_faces(float* vertices, int vertices_count,
+                         unsigned int* faces, int faces_count);
+void GLutil_draw();
+
+// char* glErrorNames[] = {
+//     [0] = "GL_NO_ERROR ",
+//     [0x0500] = "GL_INVALID_ENUM",
+//     [0x0501] = "GL_INVALID_VALUE",
+//     [0x0502] = "GL_INVALID_OPERATION",
+//     [0x0503] = "GL_STACK_OVERFLOW",
+//     [0x0504] = "GL_STACK_UNDERFLOW",
+//     [0x0505] = "GL_OUT_OF_MEMORY",
+// };
+
 
 #endif // GLUTIL_H_
 
@@ -166,6 +203,17 @@ bool GLutil_next_event(GLutil* glutil, XEvent* event);
 
 // #define GLUTIL_IMPLEMENTATION 
 #ifdef GLUTIL_IMPLEMENTATION
+
+// char* GL_ERROR_NAMES[] = {
+//     [0] = "GL_NO_ERROR ",
+//     [0x0500] = "GL_INVALID_ENUM",
+//     [0x0501] = "GL_INVALID_VALUE",
+//     [0x0502] = "GL_INVALID_OPERATION",
+//     [0x0503] = "GL_STACK_OVERFLOW",
+//     [0x0504] = "GL_STACK_UNDERFLOW",
+//     [0x0505] = "GL_OUT_OF_MEMORY",
+// };
+
 
 char* INPUT_TYPE_NAMES[] = {
     [0]  = "[RESERVED]",
@@ -214,12 +262,64 @@ char* INPUT_TYPE_NAMES[] = {
 
 typedef GLXContext(*glXCreateContextAttribsARBProc)(Display*, GLXFBConfig, GLXContext, Bool, const int*);
 
+typedef void ( *glGenBuffersProc ) ( GLsizei n,     GLuint *buffers                                 );
+typedef void ( *glBindBufferProc ) ( GLenum target, GLuint  buffer                                  );
+typedef void ( *glBufferDataProc ) ( GLenum target, GLsizeiptr size, const void *data, GLenum usage );
 
-typedef uint8_t GL_profile; enum  { GL_CORE = 0,  GL_COMPATIBILITY  };
+typedef GLuint ( *glCreateShaderProc  ) ( GLenum type                                                                    );
+typedef void   ( *glShaderSourceProc  ) ( GLuint shader,  GLsizei count, const GLchar *const*string, const GLint *length );
+typedef void   ( *glCompileShaderProc ) ( GLuint shader                                                                  );
+typedef void   ( *glAttachShaderProc  ) ( GLuint program, GLuint shader                                                  );
+typedef void   ( *glDeleteShaderProc  ) ( GLuint shader                                                                  );
+
+typedef GLuint ( *glCreateProgramProc ) ( void           );
+typedef void   ( *glLinkProgramProc   ) ( GLuint program );
+typedef void   ( *glUseProgramProc    ) ( GLuint program );
+typedef void   ( *glDeleteProgramProc ) ( GLuint program );
+
+typedef void ( *glVertexAttribPointerProc     ) ( GLuint index, GLint size,     GLenum type, GLboolean normalized, GLsizei stride, const void *pointer );
+typedef void ( *glEnableVertexAttribArrayProc ) ( GLuint index                                                                                         );
+typedef void ( *glGenVertexArraysProc         ) ( GLsizei n,    GLuint *arrays                                                                         );
+typedef void ( *glBindVertexArrayProc         ) ( GLuint array                                                                                         );
+
+typedef void ( *glGetProgramivProc ) ( GLuint program, GLenum pname, GLint *params );
+
+typedef GLint ( *glGetUniformLocationProc ) ( GLuint program, const GLchar *name );
+typedef void  ( *glUniform1fProc          ) ( GLint location, GLfloat v0         );
+
+
+typedef uint8_t GL_profile; 
+enum  { 
+    GL_CORE = 0,  
+    GL_COMPATIBILITY  
+};
 int32_t majorVersion = 0, minorVersion = 0;
 Bool profile = GL_CORE;
 
 static const int32_t STENCIL = 0, SAMPLES = 0, STEREO = GL_FALSE, AUX_BUFFERS = 0, DOUBLE_BUFFER = 1;
+
+
+glXCreateContextAttribsARBProc glXCreateContextAttribsARB;
+glGenBuffersProc               glGenBuffers;
+glBindBufferProc               glBindBuffer;
+glBufferDataProc               glBufferData;
+glCreateShaderProc             glCreateShader;
+glShaderSourceProc             glShaderSource;
+glCompileShaderProc            glCompileShader;
+glAttachShaderProc             glAttachShader;
+glDeleteShaderProc             glDeleteShader;
+glCreateProgramProc            glCreateProgram;
+glLinkProgramProc              glLinkProgram;
+glUseProgramProc               glUseProgram;
+glDeleteProgramProc            glDeleteProgram;
+glVertexAttribPointerProc      glVertexAttribPointer;
+glEnableVertexAttribArrayProc  glEnableVertexAttribArray;
+glGenVertexArraysProc          glGenVertexArrays;
+glBindVertexArrayProc          glBindVertexArray;
+glGetUniformLocationProc       glGetUniformLocation;
+glUniform1fProc                glUniform1f;
+glGetProgramivProc             glGetProgramiv;
+
 
 void GLutil_make_display(GLutil* glutil) 
 {
@@ -343,6 +443,35 @@ void GLutil_make_context(GLutil* glutil)
 
 void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h)
 {
+    // @TODO: Xmacro this motherfucker
+    glXCreateContextAttribsARB = (glXCreateContextAttribsARBProc)glXGetProcAddressARB((GLubyte*) "glXCreateContextAttribsARB");
+    glGenBuffers = (glGenBuffersProc) glXGetProcAddressARB((GLubyte*)"glGenBuffers");
+    glBindBuffer = (glBindBufferProc) glXGetProcAddressARB((GLubyte*)"glBindBuffer");
+    glBufferData = (glBufferDataProc) glXGetProcAddressARB((GLubyte*)"glBufferData");
+
+    glShaderSource  = (glShaderSourceProc)  glXGetProcAddressARB((GLubyte*)"glShaderSource");
+    glCompileShader = (glCompileShaderProc) glXGetProcAddressARB((GLubyte*)"glCompileShader");
+    glAttachShader  = (glAttachShaderProc)  glXGetProcAddressARB((GLubyte*)"glAttachShader");
+
+    glLinkProgram = (glLinkProgramProc) glXGetProcAddressARB((GLubyte*)"glLinkProgram");
+    glUseProgram  = (glUseProgramProc)  glXGetProcAddressARB((GLubyte*)"glUseProgram");
+    glDeleteProgram  = (glDeleteProgramProc)  glXGetProcAddressARB((GLubyte*)"glDeleteProgram");
+
+    glVertexAttribPointer     = (glVertexAttribPointerProc)     glXGetProcAddressARB((GLubyte*)"glVertexAttribPointer");
+    glEnableVertexAttribArray = (glEnableVertexAttribArrayProc) glXGetProcAddressARB((GLubyte*)"glEnableVertexAttribArray");
+    glGenVertexArrays         = (glGenVertexArraysProc)         glXGetProcAddressARB((GLubyte*)"glGenVertexArrays");
+
+    glCreateShader    = (glCreateShaderProc)    glXGetProcAddressARB((GLubyte*)"glCreateShader");    
+    glCreateProgram   = (glCreateProgramProc)   glXGetProcAddressARB((GLubyte*)"glCreateProgram");   
+    glDeleteShader    = (glDeleteShaderProc)    glXGetProcAddressARB((GLubyte*)"glDeleteShader");    
+    glBindVertexArray = (glBindVertexArrayProc) glXGetProcAddressARB((GLubyte*)"glBindVertexArray");  
+
+    glGetUniformLocation = (glGetUniformLocationProc) glXGetProcAddressARB((GLubyte*)"glGetUniformLocation");    
+    glUniform1f          = (glUniform1fProc)          glXGetProcAddressARB((GLubyte*)"glUniform1f");    
+
+    glGetProgramiv = (glGetProgramivProc)    glXGetProcAddressARB((GLubyte*)"glGetProgramiv");    
+
+
     GLutil_make_display(glutil);
     GLutil_make_fbc_and_vi(glutil);
     GLutil_make_window(glutil, w, h);
@@ -544,7 +673,134 @@ void GLutil_rect(GLutil_Vec2f topleft, float w, float h, GLutil_Color clr)
     glVertex2f( topleft.x + w , topleft.y + h );
     glEnd();
 }
+ /*******************************************************************************
+ *                             SHADERS                                         *
+ *******************************************************************************/
+
+// @NOTE: change to vector
+#define SHADERS_CAP 1024
+int SHADERS_COUNT = 0;
+GLuint SHADERS[SHADERS_CAP];
+GLuint current_shader_program = -1;
+
+
+void flush_shaders()
+{
+    for (int i = 0; i < SHADERS_COUNT; ++i) {
+        glDeleteShader(SHADERS[i]);
+    }
+    SHADERS_COUNT = 0;
+}
+
+void load_shader(const char* name, GLutil_ShaderType type)
+{
+    GLenum gl_type = type == GLUTIL_VERT_SHADER ? GL_VERTEX_SHADER : GL_FRAGMENT_SHADER;
+    GLuint shader_id = glCreateShader(gl_type);
+
+    FILE* f = fopen(name, "r");
+    if (f == NULL) {
+        printf(
+            "%s:%d:ERROR: load_shader: failed to open file '%s': %s\n",
+            __FILE_NAME__, __LINE__, name, strerror(errno)
+        );
+        // if error => sb->data == NULL 
+        return;
+    }
+
+    fseek(f, 0, SEEK_END);
+    size_t n = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    char* data = (char*)calloc((n + 1), sizeof(char));
+    fread(data, sizeof(char), n, f);
+    fclose(f);
+
+    const char* shader_src = data;
+    glShaderSource(shader_id, 1, &shader_src , NULL);
+    free(data);
+
+    glCompileShader(shader_id);
+
+    assert(SHADERS_COUNT < SHADERS_CAP);
+    SHADERS[SHADERS_COUNT++] = shader_id;
+}
+
+
+bool use_shaders()
+{
+    int ret;
+    GLuint shader_program = glCreateProgram();
+    for (int i = 0; i < SHADERS_COUNT; ++i) {
+        glAttachShader(shader_program, SHADERS[i]);
+
+    }
+    glLinkProgram(shader_program);
+    glGetProgramiv(shader_program, GL_LINK_STATUS, &ret );
+    if (!ret) return false;
+    glUseProgram(shader_program); // @TODO: error handling
+    current_shader_program = shader_program;
+    return true;
+}
+
+void stop_using_shaders()
+{
+    flush_shaders();
+    if (current_shader_program != -1) {
+        glDeleteProgram(current_shader_program);
+    }
+}
+
+
+
+/*******************************************************************************
+ *                               BUFFERS                                       *
+ ******************************************************************************/
+
+
+GLuint current_vao = -1;
+int current_ebo_count = -1;
+
+void load_vertices_and_faces(float* vertices, int vertices_count,
+                         unsigned int* faces, int faces_count)
+{
+    GLuint buf_id, ebo_id, vao_id;
+    glGenVertexArrays(1, &vao_id);
+    glGenBuffers(1,      &buf_id);
+    glGenBuffers(1,      &ebo_id);
+
+    glBindVertexArray(vao_id);
+    // printf("[VAO] Error: %s\n", glErrorNames[glGetError()]);
+
+    glBindBuffer(GL_ARRAY_BUFFER, buf_id);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float)*vertices_count, vertices, GL_STATIC_DRAW);
+    // printf("[VBO] Error: %s\n", glErrorNames[glGetError()]);
+
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_id);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)*faces_count, faces, GL_STATIC_DRAW );
+    // printf("[EBO] Error: %s\n", glErrorNames[glGetError()]);
+
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    // printf("[ATTRIB] Error: %s\n", glErrorNames[glGetError()]);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0); 
+    glBindVertexArray(0); 
+    // printf("[END] Error: %s\n", glErrorNames[glGetError()]);
+
+    current_vao = vao_id;
+    current_ebo_count = faces_count;
+}
+
+void draw()
+{
+    glBindVertexArray(current_vao);
+    glDrawElements(GL_TRIANGLES, current_ebo_count, GL_UNSIGNED_INT, 0);
+    // printf("[DRAW] Error: %s\n", glErrorNames[glGetError()]);
+}
 
 
 
 #endif // GLUTIL_H_
+
