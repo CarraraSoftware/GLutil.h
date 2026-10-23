@@ -256,36 +256,51 @@ char* INPUT_TYPE_NAMES[] = {
 
 
 /*******************************************************************************
- *  INICIALIZAÇÃO DO OPENGL                                                    *
- *  (from: https://github.com/ColleagueRiley/OpenGL-Context-Creation)          *
- ******************************************************************************/
+*      TABELA DE XMACRO PARA FUNÇÕES CARREGADAS DURANTE O RUNTIME              *
+*                                                                              *
+******************************************************************************/ 
 
-typedef GLXContext(*glXCreateContextAttribsARBProc)(Display*, GLXFBConfig, GLXContext, Bool, const int*);
 
-typedef void ( *glGenBuffersProc ) ( GLsizei n,     GLuint *buffers                                 );
-typedef void ( *glBindBufferProc ) ( GLenum target, GLuint  buffer                                  );
-typedef void ( *glBufferDataProc ) ( GLenum target, GLsizeiptr size, const void *data, GLenum usage );
+//   function_name                return_type   ...params
+#define GLUTIL_GL_FUNCTIONS_TO_LOAD                                                                                                                    \
+   X( glXCreateContextAttribsARB, GLXContext,   Display*, GLXFBConfig, GLXContext, Bool, const int*                                                  ) \
+   X( glGenBuffers,               void,         GLsizei n, GLuint *buffers                                                                           ) \
+   X( glBindBuffer,               void,         GLenum target, GLuint  buffer                                                                        ) \
+   X( glBufferData,               void,         GLenum target, GLsizeiptr size, const void *data, GLenum usage                                       ) \
+   X( glCreateShader,             GLuint,       GLenum type                                                                                          ) \
+   X( glShaderSource,             void,         GLuint shader,  GLsizei count, const GLchar *const*string, const GLint *length                       ) \
+   X( glCompileShader,            void,         GLuint shader                                                                                        ) \
+   X( glAttachShader,             void,         GLuint program, GLuint shader                                                                        ) \
+   X( glDeleteShader,             void,         GLuint shader                                                                                        ) \
+   X( glCreateProgram,            GLuint,       void                                                                                                 ) \
+   X( glLinkProgram,              void,         GLuint program                                                                                       ) \
+   X( glUseProgram,               void,         GLuint program                                                                                       ) \
+   X( glDeleteProgram,            void,         GLuint program                                                                                       ) \
+   X( glVertexAttribPointer,      void,         GLuint index, GLint size,     GLenum type, GLboolean normalized, GLsizei stride, const void *pointer ) \
+   X( glEnableVertexAttribArray,  void,         GLuint index                                                                                         ) \
+   X( glGenVertexArrays,          void,         GLsizei n,    GLuint *arrays                                                                         ) \
+   X( glBindVertexArray,          void,         GLuint array                                                                                         ) \
+   X( glGetProgramiv,             void,         GLuint program, GLenum pname, GLint *params                                                          ) \
+   X( glGetUniformLocation,       GLint,        GLuint program, const GLchar *name                                                                   ) \
+   X( glUniform1f,                void,         GLint location, GLfloat v0                                                                           )
+      
+#define GLUTIL_CONCAT_MACRO_NAMES(x, y) x ## y
 
-typedef GLuint ( *glCreateShaderProc  ) ( GLenum type                                                                    );
-typedef void   ( *glShaderSourceProc  ) ( GLuint shader,  GLsizei count, const GLchar *const*string, const GLint *length );
-typedef void   ( *glCompileShaderProc ) ( GLuint shader                                                                  );
-typedef void   ( *glAttachShaderProc  ) ( GLuint program, GLuint shader                                                  );
-typedef void   ( *glDeleteShaderProc  ) ( GLuint shader                                                                  );
+// definições de tipo para todas as funções necessárias de serem carregadas dinamicamente
+#define X(func_name, ret_type, ...) typedef ret_type ( * GLUTIL_CONCAT_MACRO_NAMES(func_name, Proc) ) ( __VA_ARGS__ );
+GLUTIL_GL_FUNCTIONS_TO_LOAD
+#undef X
 
-typedef GLuint ( *glCreateProgramProc ) ( void           );
-typedef void   ( *glLinkProgramProc   ) ( GLuint program );
-typedef void   ( *glUseProgramProc    ) ( GLuint program );
-typedef void   ( *glDeleteProgramProc ) ( GLuint program );
+// váriaveis globais pras funções que serão carregadas dinamicamente
+#define X(func_name, ...) GLUTIL_CONCAT_MACRO_NAMES(func_name, Proc) func_name;
+GLUTIL_GL_FUNCTIONS_TO_LOAD
+#undef X
 
-typedef void ( *glVertexAttribPointerProc     ) ( GLuint index, GLint size,     GLenum type, GLboolean normalized, GLsizei stride, const void *pointer );
-typedef void ( *glEnableVertexAttribArrayProc ) ( GLuint index                                                                                         );
-typedef void ( *glGenVertexArraysProc         ) ( GLsizei n,    GLuint *arrays                                                                         );
-typedef void ( *glBindVertexArrayProc         ) ( GLuint array                                                                                         );
 
-typedef void ( *glGetProgramivProc ) ( GLuint program, GLenum pname, GLint *params );
-
-typedef GLint ( *glGetUniformLocationProc ) ( GLuint program, const GLchar *name );
-typedef void  ( *glUniform1fProc          ) ( GLint location, GLfloat v0         );
+/*******************************************************************************
+*  INICIALIZAÇÃO DO OPENGL                                                    *
+*  (from: https://github.com/ColleagueRiley/OpenGL-Context-Creation)          *
+******************************************************************************/ 
 
 
 typedef uint8_t GL_profile; 
@@ -297,28 +312,6 @@ int32_t majorVersion = 0, minorVersion = 0;
 Bool profile = GL_CORE;
 
 static const int32_t STENCIL = 0, SAMPLES = 0, STEREO = GL_FALSE, AUX_BUFFERS = 0, DOUBLE_BUFFER = 1;
-
-
-glXCreateContextAttribsARBProc glXCreateContextAttribsARB;
-glGenBuffersProc               glGenBuffers;
-glBindBufferProc               glBindBuffer;
-glBufferDataProc               glBufferData;
-glCreateShaderProc             glCreateShader;
-glShaderSourceProc             glShaderSource;
-glCompileShaderProc            glCompileShader;
-glAttachShaderProc             glAttachShader;
-glDeleteShaderProc             glDeleteShader;
-glCreateProgramProc            glCreateProgram;
-glLinkProgramProc              glLinkProgram;
-glUseProgramProc               glUseProgram;
-glDeleteProgramProc            glDeleteProgram;
-glVertexAttribPointerProc      glVertexAttribPointer;
-glEnableVertexAttribArrayProc  glEnableVertexAttribArray;
-glGenVertexArraysProc          glGenVertexArrays;
-glBindVertexArrayProc          glBindVertexArray;
-glGetUniformLocationProc       glGetUniformLocation;
-glUniform1fProc                glUniform1f;
-glGetProgramivProc             glGetProgramiv;
 
 
 void GLutil_make_display(GLutil* glutil) 
@@ -443,33 +436,10 @@ void GLutil_make_context(GLutil* glutil)
 
 void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h)
 {
-    // @TODO: Xmacro this motherfucker
-    glXCreateContextAttribsARB = (glXCreateContextAttribsARBProc)glXGetProcAddressARB((GLubyte*) "glXCreateContextAttribsARB");
-    glGenBuffers = (glGenBuffersProc) glXGetProcAddressARB((GLubyte*)"glGenBuffers");
-    glBindBuffer = (glBindBufferProc) glXGetProcAddressARB((GLubyte*)"glBindBuffer");
-    glBufferData = (glBufferDataProc) glXGetProcAddressARB((GLubyte*)"glBufferData");
 
-    glShaderSource  = (glShaderSourceProc)  glXGetProcAddressARB((GLubyte*)"glShaderSource");
-    glCompileShader = (glCompileShaderProc) glXGetProcAddressARB((GLubyte*)"glCompileShader");
-    glAttachShader  = (glAttachShaderProc)  glXGetProcAddressARB((GLubyte*)"glAttachShader");
-
-    glLinkProgram = (glLinkProgramProc) glXGetProcAddressARB((GLubyte*)"glLinkProgram");
-    glUseProgram  = (glUseProgramProc)  glXGetProcAddressARB((GLubyte*)"glUseProgram");
-    glDeleteProgram  = (glDeleteProgramProc)  glXGetProcAddressARB((GLubyte*)"glDeleteProgram");
-
-    glVertexAttribPointer     = (glVertexAttribPointerProc)     glXGetProcAddressARB((GLubyte*)"glVertexAttribPointer");
-    glEnableVertexAttribArray = (glEnableVertexAttribArrayProc) glXGetProcAddressARB((GLubyte*)"glEnableVertexAttribArray");
-    glGenVertexArrays         = (glGenVertexArraysProc)         glXGetProcAddressARB((GLubyte*)"glGenVertexArrays");
-
-    glCreateShader    = (glCreateShaderProc)    glXGetProcAddressARB((GLubyte*)"glCreateShader");    
-    glCreateProgram   = (glCreateProgramProc)   glXGetProcAddressARB((GLubyte*)"glCreateProgram");   
-    glDeleteShader    = (glDeleteShaderProc)    glXGetProcAddressARB((GLubyte*)"glDeleteShader");    
-    glBindVertexArray = (glBindVertexArrayProc) glXGetProcAddressARB((GLubyte*)"glBindVertexArray");  
-
-    glGetUniformLocation = (glGetUniformLocationProc) glXGetProcAddressARB((GLubyte*)"glGetUniformLocation");    
-    glUniform1f          = (glUniform1fProc)          glXGetProcAddressARB((GLubyte*)"glUniform1f");    
-
-    glGetProgramiv = (glGetProgramivProc)    glXGetProcAddressARB((GLubyte*)"glGetProgramiv");    
+#define X(func_name, ...) func_name = ( GLUTIL_CONCAT_MACRO_NAMES(func_name, Proc) ) glXGetProcAddressARB( (GLubyte*) #func_name );
+    GLUTIL_GL_FUNCTIONS_TO_LOAD
+#undef X
 
 
     GLutil_make_display(glutil);
