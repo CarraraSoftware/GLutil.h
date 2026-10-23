@@ -684,7 +684,7 @@ GLuint SHADERS[SHADERS_CAP];
 GLuint current_shader_program = -1;
 
 
-void flush_shaders()
+void GLutil_flush_shaders()
 {
     for (int i = 0; i < SHADERS_COUNT; ++i) {
         glDeleteShader(SHADERS[i]);
@@ -692,7 +692,7 @@ void flush_shaders()
     SHADERS_COUNT = 0;
 }
 
-void load_shader(const char* name, GLutil_ShaderType type)
+void GLutil_load_shader(const char* name, GLutil_ShaderType type)
 {
     GLenum gl_type = type == GLUTIL_VERT_SHADER ? GL_VERTEX_SHADER : GL_FRAGMENT_SHADER;
     GLuint shader_id = glCreateShader(gl_type);
@@ -726,7 +726,7 @@ void load_shader(const char* name, GLutil_ShaderType type)
 }
 
 
-bool use_shaders()
+bool GLutil_use_shaders()
 {
     int ret;
     GLuint shader_program = glCreateProgram();
@@ -742,7 +742,7 @@ bool use_shaders()
     return true;
 }
 
-void stop_using_shaders()
+void GLutil_stop_using_shaders()
 {
     flush_shaders();
     if (current_shader_program != -1) {
@@ -760,7 +760,7 @@ void stop_using_shaders()
 GLuint current_vao = -1;
 int current_ebo_count = -1;
 
-void load_vertices_and_faces(float* vertices, int vertices_count,
+void GLutil_load_vertices_and_faces(float* vertices, int vertices_count,
                          unsigned int* faces, int faces_count)
 {
     GLuint buf_id, ebo_id, vao_id;
@@ -793,7 +793,7 @@ void load_vertices_and_faces(float* vertices, int vertices_count,
     current_ebo_count = faces_count;
 }
 
-void draw()
+void GLutil_draw()
 {
     glBindVertexArray(current_vao);
     glDrawElements(GL_TRIANGLES, current_ebo_count, GL_UNSIGNED_INT, 0);
