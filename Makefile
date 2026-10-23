@@ -16,3 +16,7 @@ particles:
 quadtree:
 	gcc -o $(OUT_DIR)quad examples/50-quadtree.c $(LINKER_FLAGS)
 	$(OUT_DIR)quad
+
+cube:
+	gcc -o $(OUT_DIR)cube examples/999-textured_cube/main.c $(LINKER_FLAGS)
+	$(OUT_DIR)cube

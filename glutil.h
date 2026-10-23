@@ -57,6 +57,7 @@
 
 #define Color   GLutil_Color
 #define Vec2f   GLutil_Vec2f
+#define Vertex  GLutil_Vertex
 
 #define init    GLutil_init
 #define destroy GLutil_destroy
@@ -111,6 +112,7 @@
       | OwnerGrabButtonMask )
 
 
+
 typedef struct GLutil {
     Window       window;
     Display*     display;
@@ -146,6 +148,26 @@ typedef struct  {
 } GLutil_ShaderType;
 
 
+#define GLutil_Vertex_XYZ_size 3
+typedef struct {
+    // @TODO: add Vec3f
+    struct {
+        float x;
+        float y;
+        float z;
+    } pos;
+
+    struct {
+        float r;
+        float g;
+        float b;
+    } color;
+
+
+    Vec2f tex_pos;
+
+} GLutil_Vertex;
+
 void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h);            // inicializa Display, Window e o OpenGLContext. e mais alguns estados internos
 void GLutil_destroy(GLutil* glutil);                                         // desaloca e fecha todos os recursos alocados por GLutil.h
 
@@ -178,7 +200,7 @@ void GLutil_load_shader(const char* name, GLutil_ShaderType type);
 bool GLutil_use_shaders();
 void GLutil_stop_using_shaders();
 
-void GLutil_load_vertices_and_faces(float* vertices, int vertices_count,
+void GLutil_load_vertices_and_faces(GLutil_Vertex* vertices, int vertices_count,
                          unsigned int* faces, int faces_count);
 void GLutil_draw();
 
@@ -282,7 +304,10 @@ char* INPUT_TYPE_NAMES[] = {
    X( glBindVertexArray,          void,         GLuint array                                                                                         ) \
    X( glGetProgramiv,             void,         GLuint program, GLenum pname, GLint *params                                                          ) \
    X( glGetUniformLocation,       GLint,        GLuint program, const GLchar *name                                                                   ) \
-   X( glUniform1f,                void,         GLint location, GLfloat v0                                                                           )
+   X( glUniform1f,                void,         GLint location, GLfloat v0                                                                           ) \
+   X( glGenerateMipmap,           void,         GLenum target                                                                                        ) \
+   X( glUniform1i,                void,         GLint location, GLint v0                                                                             )
+   // X( glGenTextures,              void,         GLsizei n, GLuint* textures                                                                          )
       
 #define GLUTIL_CONCAT_MACRO_NAMES(x, y) x ## y
 
@@ -473,7 +498,7 @@ void GLutil_ortho2D(GLdouble left, GLdouble right, GLdouble top, GLdouble bottom
 void GLutil_clear_bg( Color color )
 {
     glClearColor(color.red / 255.0f,  color.green / 255.0f, color.blue / 255.0f, color.alpha / 255.0f );
-    glClear( GL_COLOR_BUFFER_BIT );
+    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 }
 
 void GLutil_present(GLutil* glutil)
@@ -730,7 +755,9 @@ void GLutil_stop_using_shaders()
 GLuint current_vao = -1;
 int current_ebo_count = -1;
 
-void GLutil_load_vertices_and_faces(float* vertices, int vertices_count,
+
+
+void GLutil_load_vertices_and_faces(GLutil_Vertex* vertices, int vertices_count,
                          unsigned int* faces, int faces_count)
 {
     GLuint buf_id, ebo_id, vao_id;
@@ -742,7 +769,7 @@ void GLutil_load_vertices_and_faces(float* vertices, int vertices_count,
     // printf("[VAO] Error: %s\n", glErrorNames[glGetError()]);
 
     glBindBuffer(GL_ARRAY_BUFFER, buf_id);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(float)*vertices_count, vertices, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLutil_Vertex)*vertices_count, vertices, GL_STATIC_DRAW);
     // printf("[VBO] Error: %s\n", glErrorNames[glGetError()]);
 
 
@@ -751,8 +778,15 @@ void GLutil_load_vertices_and_faces(float* vertices, int vertices_count,
     // printf("[EBO] Error: %s\n", glErrorNames[glGetError()]);
 
 
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(*vertices), (void*)offsetof(GLutil_Vertex, pos));
     glEnableVertexAttribArray(0);
+
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(*vertices), (void*)offsetof(GLutil_Vertex, color));
+    glEnableVertexAttribArray(1);
+
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(*vertices), (void*)offsetof(GLutil_Vertex, tex_pos));
+    glEnableVertexAttribArray(2);
+
     // printf("[ATTRIB] Error: %s\n", glErrorNames[glGetError()]);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0); 
