@@ -135,7 +135,7 @@ CarrStringBuilder carr_sb_from_file(const char* file_path)
             __FILE_NAME__, __LINE__, file_path, strerror(errno)
         );
         // if error => sb->data == NULL 
-        return sb_new();
+        return carr_sb_new();
     }
 
     fseek(f, 0, SEEK_END);
@@ -212,7 +212,7 @@ void carr_sb_concatf(CarrStringBuilder* sb, const char* format, ...)
     vsnprintf(temp, CARR_SV_TEMP_STR_SIZE, format, args);
     va_end(args);
 
-    sb_concat(sb, (const char*)temp);
+    carr_sb_concat(sb, (const char*)temp);
 }
 
 

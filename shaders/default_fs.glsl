@@ -7,6 +7,7 @@ in vec2 vs_texture_pos;
 
 uniform float t;
 
+uniform int has_texture;        // @TODO: is there a better way of passing booleans to shaders?
 uniform sampler2D the_texture;
 
 void main()
@@ -23,7 +24,11 @@ void main()
        // float b = 0.2f;
        // FragColor = vec4( r, g, b, 1.0f );
        // FragColor = vec4( vs_color, 1.0f );
-       FragColor = texture(the_texture, vs_texture_pos);
+    if (has_texture == 1) {
+        FragColor = texture(the_texture, vs_texture_pos);
+    } else {
+        FragColor = vec4(vs_color, 1.0);
+    }
 }
 
 

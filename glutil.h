@@ -48,6 +48,19 @@
 #include <time.h>
 #include <unistd.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "include/stb_image.h"
+
+#define CARR_VEC_FORCE_PREFIX
+#define CARR_VEC_IMPLEMENTATION
+#include "include/vec.h"
+
+#define CARR_SV_FORCE_PREFIX
+#define CARR_SV_IMPLEMENTATION
+#include "include/sv.h"
+
+
+
 #ifndef GLUTIL_FORCE_PREFIX
 
 #define MAP    GLUTIL_MAP
@@ -57,7 +70,11 @@
 
 #define Color   GLutil_Color
 #define Vec2f   GLutil_Vec2f
-#define Vertex  GLutil_Vertex
+
+#define Vertex   GLutil_Vertex
+#define Vertices GLutil_Vertices
+#define Faces    GLutil_Faces
+#define ObjModel GLutil_ObjModel
 
 #define init    GLutil_init
 #define destroy GLutil_destroy
@@ -84,13 +101,16 @@
 #define set_target_fps    GLutil_set_target_fps
 #define next_event        GLutil_next_event
 
-#define flush_shaders      GLutil_flush_shaders
 #define load_shader        GLutil_load_shader
+#define default_shaders    GLutil_default_shaders
+/*
+#define flush_shaders      GLutil_flush_shaders
 #define use_shaders        GLutil_use_shaders
 #define stop_using_shaders GLutil_stop_using_shaders
+*/
 
-#define load_vertices_and_faces GLutil_load_vertices_and_faces
-#define draw                    GLutil_draw
+#define render_obj      GLutil_render_obj
+#define load_obj_to_GPU GLutil_load_obj_to_GPU
 
 #endif // GLUTIL_INCLUDE_PREFIX
 
@@ -125,6 +145,10 @@ typedef struct GLutil {
     uint64_t     dt_nanos;        // delta time em nanosegundos entre os dois últimos frames
     uint64_t     target_sleep_us; // quantidade de microsegundos de delay para atingir o FPS alvo
 
+    GLuint       current_vao ;
+    int          current_ebo_count;
+
+
 } GLutil;
 
 
@@ -143,8 +167,8 @@ typedef struct  {
 
 
  typedef enum {
-    GLUTIL_VERT_SHADER,
-    GLUTIL_FRAG_SHADER,
+    GLUTIL_VERT_SHADER = GL_VERTEX_SHADER,
+    GLUTIL_FRAG_SHADER = GL_FRAGMENT_SHADER,
 } GLutil_ShaderType;
 
 
@@ -167,6 +191,48 @@ typedef struct {
     Vec2f tex_pos;
 
 } GLutil_Vertex;
+
+
+typedef struct {
+    GLutil_Vertex* items;
+    size_t         len;
+    size_t         cap;
+} GLutil_Vertices;
+
+typedef struct {
+    unsigned int* items;
+    size_t        len;
+    size_t        cap;
+} GLutil_Faces;
+
+
+
+typedef struct {
+    GLutil_Vertices vertices;  // vertex data parsed from .obj file
+    GLutil_Faces    faces;     // face   data parsed from .obj file
+
+    GLuint vbo_id, ebo_id, vao_id;  // ids (or names?) returned by openGL when vertex data is loaded into the GPU
+
+    GLuint texture_id;              // id to the texture_id returned by OpenGL when the texture data is loaded into the GPU
+                                    // a value of -1 (4294967295), means there's no texture associated with this model 
+
+    GLuint shader_program;          // id of compiled and linked shader program to use
+                                    // a value of -1 (4294967295), means there's no shader associated with this model 
+} GLutil_ObjModel;
+
+
+
+// @NOTE: does it even make sense to just have a bunch of shaders
+//        completely devoid of context? like, not associated with a texture
+//        or with a model or with anything at all?
+/*
+#define SHADERS_CAP 1024
+int SHADERS_COUNT = 0;
+GLuint SHADERS[SHADERS_CAP];
+*/
+// GLuint current_shader_program = -1;
+
+
 
 void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h);            // inicializa Display, Window e o OpenGLContext. e mais alguns estados internos
 void GLutil_destroy(GLutil* glutil);                                         // desaloca e fecha todos os recursos alocados por GLutil.h
@@ -195,14 +261,17 @@ void GLutil_present(GLutil* glutil);
 void GLutil_set_target_fps(GLutil* glutil, float fps);
 bool GLutil_next_event(GLutil* glutil, XEvent* event);
 
+GLuint GLutil_load_shader(const char* name, GLutil_ShaderType type);
+void GLutil_default_shaders(GLutil_ObjModel* obj);
+
+/* @TODO: rethink these functions
 void GLutil_flush_shaders();
-void GLutil_load_shader(const char* name, GLutil_ShaderType type);
 bool GLutil_use_shaders();
 void GLutil_stop_using_shaders();
+*/
 
-void GLutil_load_vertices_and_faces(GLutil_Vertex* vertices, int vertices_count,
-                         unsigned int* faces, int faces_count);
-void GLutil_draw();
+void GLutil_render_obj(GLutil_ObjModel* obj);
+void GLutil_load_obj_to_GPU(GLutil_ObjModel* obj);
 
 // char* glErrorNames[] = {
 //     [0] = "GL_NO_ERROR ",
@@ -226,7 +295,11 @@ void GLutil_draw();
 // #define GLUTIL_IMPLEMENTATION 
 #ifdef GLUTIL_IMPLEMENTATION
 
-// char* GL_ERROR_NAMES[] = {
+
+static const char* DEFAULT_VERT_SHADER_PATH = "./shaders/default_vs.glsl";
+static const char* DEFAULT_FRAG_SHADER_PATH = "./shaders/default_fs.glsl";
+
+// const char* GL_ERROR_NAMES[] = {
 //     [0] = "GL_NO_ERROR ",
 //     [0x0500] = "GL_INVALID_ENUM",
 //     [0x0501] = "GL_INVALID_VALUE",
@@ -237,7 +310,7 @@ void GLutil_draw();
 // };
 
 
-char* INPUT_TYPE_NAMES[] = {
+const char* INPUT_TYPE_NAMES[] = {
     [0]  = "[RESERVED]",
     [1]  = "[RESERVED]",
     [2]  = "KeyPress",
@@ -401,8 +474,6 @@ void GLutil_make_fbc_and_vi(GLutil* glutil)
         0
     };
     
-    size_t index = (sizeof(attribs) / sizeof(attribs[0])) - 13;
-
     int32_t fbcount;
     GLXFBConfig* fbc = glXChooseFBConfig(glutil->display, DefaultScreen(glutil->display), (int32_t*) attribs, &fbcount);
 
@@ -668,29 +739,19 @@ void GLutil_rect(GLutil_Vec2f topleft, float w, float h, GLutil_Color clr)
     glVertex2f( topleft.x + w , topleft.y + h );
     glEnd();
 }
+
+
+
  /*******************************************************************************
  *                             SHADERS                                         *
  *******************************************************************************/
 
-// @NOTE: change to vector
-#define SHADERS_CAP 1024
-int SHADERS_COUNT = 0;
-GLuint SHADERS[SHADERS_CAP];
-GLuint current_shader_program = -1;
 
 
-void GLutil_flush_shaders()
+
+GLuint GLutil_load_shader(const char* name, GLutil_ShaderType type)
 {
-    for (int i = 0; i < SHADERS_COUNT; ++i) {
-        glDeleteShader(SHADERS[i]);
-    }
-    SHADERS_COUNT = 0;
-}
-
-void GLutil_load_shader(const char* name, GLutil_ShaderType type)
-{
-    GLenum gl_type = type == GLUTIL_VERT_SHADER ? GL_VERTEX_SHADER : GL_FRAGMENT_SHADER;
-    GLuint shader_id = glCreateShader(gl_type);
+    GLuint shader_id = glCreateShader(type);
 
     FILE* f = fopen(name, "r");
     if (f == NULL) {
@@ -699,7 +760,7 @@ void GLutil_load_shader(const char* name, GLutil_ShaderType type)
             __FILE_NAME__, __LINE__, name, strerror(errno)
         );
         // if error => sb->data == NULL 
-        return;
+        return (GLuint)-1;
     }
 
     fseek(f, 0, SEEK_END);
@@ -716,11 +777,41 @@ void GLutil_load_shader(const char* name, GLutil_ShaderType type)
 
     glCompileShader(shader_id);
 
+    
+    /* @TODO: decide if will keep this around or not
     assert(SHADERS_COUNT < SHADERS_CAP);
     SHADERS[SHADERS_COUNT++] = shader_id;
+    */
+
+    return shader_id;
 }
 
 
+
+
+void GLutil_default_shaders(GLutil_ObjModel* obj)
+{
+    if (obj->shader_program != (GLuint)-1) {
+        glDeleteProgram(obj->shader_program);
+    }
+
+    GLuint shader = glCreateProgram();
+    GLuint vs_id  = GLutil_load_shader(DEFAULT_VERT_SHADER_PATH, GLUTIL_VERT_SHADER);
+    GLuint fs_id  = GLutil_load_shader(DEFAULT_FRAG_SHADER_PATH, GLUTIL_FRAG_SHADER);
+
+    glAttachShader(shader, vs_id);
+    glAttachShader(shader, fs_id);
+    glLinkProgram(shader);
+    glDeleteShader(vs_id);
+    glDeleteShader(fs_id);
+
+    // @TODO: error handling
+    obj->shader_program = shader;
+    printf("generated default shader program with id = %u\n", shader);
+}
+
+
+/*
 bool GLutil_use_shaders()
 {
     int ret;
@@ -737,6 +828,15 @@ bool GLutil_use_shaders()
     return true;
 }
 
+
+void GLutil_flush_shaders()
+{
+    for (int i = 0; i < SHADERS_COUNT; ++i) {
+        glDeleteShader(SHADERS[i]);
+    }
+    SHADERS_COUNT = 0;
+}
+
 void GLutil_stop_using_shaders()
 {
     flush_shaders();
@@ -744,63 +844,298 @@ void GLutil_stop_using_shaders()
         glDeleteProgram(current_shader_program);
     }
 }
+*/
 
 
 
 /*******************************************************************************
- *                               BUFFERS                                       *
+ *                               3D MODEL OBJ                                  *
  ******************************************************************************/
 
+CarrStringView NORMAL_TAG  = (CarrStringView) { .data = "vn", .len  = 2  };
+CarrStringView TEXTURE_TAG = (CarrStringView) { .data = "vt", .len  = 2  };
+CarrStringView SMOOTH_TAG  = (CarrStringView) { .data = "s",  .len  = 1  };
+CarrStringView OBJECT_TAG  = (CarrStringView) { .data = "o",  .len  = 1  };
+CarrStringView VERTEX_TAG  = (CarrStringView) { .data = "v",  .len  = 1  };
+CarrStringView FACE_TAG    = (CarrStringView) { .data = "f",  .len  = 1  };
 
-GLuint current_vao = -1;
-int current_ebo_count = -1;
+
+typedef struct {
+    float* items;
+    size_t len;
+    size_t cap;
+} VecFloats;
 
 
-
-void GLutil_load_vertices_and_faces(GLutil_Vertex* vertices, int vertices_count,
-                         unsigned int* faces, int faces_count)
+ObjModel load_obj_file(const char* file_path)
 {
-    GLuint buf_id, ebo_id, vao_id;
-    glGenVertexArrays(1, &vao_id);
-    glGenBuffers(1,      &buf_id);
-    glGenBuffers(1,      &ebo_id);
+    ObjModel obj = {0};
 
-    glBindVertexArray(vao_id);
-    // printf("[VAO] Error: %s\n", glErrorNames[glGetError()]);
+    Vertices verts = {0};
+    carr_vec_init(&verts);
 
-    glBindBuffer(GL_ARRAY_BUFFER, buf_id);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(GLutil_Vertex)*vertices_count, vertices, GL_STATIC_DRAW);
-    // printf("[VBO] Error: %s\n", glErrorNames[glGetError()]);
+    Faces faces = {0};
+    carr_vec_init(&faces);
 
 
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_id);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)*faces_count, faces, GL_STATIC_DRAW );
-    // printf("[EBO] Error: %s\n", glErrorNames[glGetError()]);
+    CarrStringBuilder sb = carr_sb_from_file(file_path);
+    CarrStringView file = carr_sv_from_sb(sb);
+
+    VecFloats vs = {0};  // temp vec for vertices coordinates
+    carr_vec_init(&vs);
+
+    VecFloats vts = {0};  // temp vec for textures coordinates
+    carr_vec_init(&vts);
+
+    Faces v_idxs = {0};   // temp vec for vertices indexes for faces
+    carr_vec_init(&v_idxs);
+
+    Faces vt_idxs = {0};  // temp vec for texture indixes for faces
+    carr_vec_init(&vt_idxs);
 
 
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(*vertices), (void*)offsetof(GLutil_Vertex, pos));
-    glEnableVertexAttribArray(0);
+    while (file.len > 0) {
+        CarrStringView line = carr_sv_chop_line(&file);
+        if (line.len == 0 || carr_sv_first(&line) == '#')
+            continue;
 
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(*vertices), (void*)offsetof(GLutil_Vertex, color));
-    glEnableVertexAttribArray(1);
+        CarrStringView tag = carr_sv_chop_by_space(&line); 
 
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(*vertices), (void*)offsetof(GLutil_Vertex, tex_pos));
-    glEnableVertexAttribArray(2);
+        if (carr_sv_is_equal(tag, NORMAL_TAG) || 
+            carr_sv_is_equal(tag, OBJECT_TAG) || carr_sv_is_equal(tag, SMOOTH_TAG)) {
+            printf("[WARNING] Vertex Data not supported: '%.*s'\n", (int)tag.len, tag.data);
+        } else if ( carr_sv_is_equal(tag, VERTEX_TAG) ) {
 
-    // printf("[ATTRIB] Error: %s\n", glErrorNames[glGetError()]);
+            char linebuf[100] = {0};
+            assert(line.len < 100);
+            memcpy(linebuf, line.data, sizeof(char) * line.len);
 
-    glBindBuffer(GL_ARRAY_BUFFER, 0); 
-    glBindVertexArray(0); 
-    // printf("[END] Error: %s\n", glErrorNames[glGetError()]);
+            float x, y, z;
+            sscanf(linebuf, "%f %f %f", &x, &y, &z);
 
-    current_vao = vao_id;
-    current_ebo_count = faces_count;
+
+            carr_vec_append(&vs, x);
+            carr_vec_append(&vs, y);
+            carr_vec_append(&vs, z);
+
+        } else if ( carr_sv_is_equal(tag, TEXTURE_TAG) ) {
+
+            char linebuf[100] = {0};
+            assert(line.len < 100);
+            memcpy(linebuf, line.data, sizeof(char) * line.len);
+
+            float u, v;
+            sscanf(linebuf, "%f %f", &u, &v);
+
+            carr_vec_append(&vts, u);
+            carr_vec_append(&vts, v);
+
+        } else if ( carr_sv_is_equal(tag, FACE_TAG) ) {
+
+            char linebuf[100] = {0};
+            assert(line.len < 100);
+            memcpy(linebuf, line.data, sizeof(char) * line.len);
+
+            char buf1[35];
+            char buf2[35];
+            char buf3[35];
+            
+            sscanf(linebuf, "%s %s %s", buf1, buf2, buf3);
+
+            CarrStringView buf_sv = carr_sv_from_cstr(buf1);
+            CarrStringView idx = carr_sv_chop_by_delim(&buf_sv, '/');
+            int idx_int = carr_sv_parse_int(&idx);
+            carr_vec_append(&v_idxs, idx_int - 1);
+            if (buf_sv.len > 0) {
+                idx = carr_sv_chop_by_delim(&buf_sv, '/');
+                idx_int = carr_sv_parse_int(&idx);
+                carr_vec_append(&vt_idxs, idx_int - 1);
+                // @TODO: coloca idx_int no vec de índices para texturas
+                if (buf_sv.len > 0) {
+                    idx = carr_sv_chop_by_delim(&buf_sv, '/');
+                    idx_int = carr_sv_parse_int(&idx);
+                    // @TODO: criar mecanismo para lidar com normais
+                    // @TODO: coloca idx_int no vec de índices para normais
+                }
+            }
+
+            buf_sv = carr_sv_from_cstr(buf2);
+            idx = carr_sv_chop_by_delim(&buf_sv, '/');
+            idx_int = carr_sv_parse_int(&idx);
+            carr_vec_append(&v_idxs, idx_int - 1);
+            if (buf_sv.len > 0) {
+                idx = carr_sv_chop_by_delim(&buf_sv, '/');
+                idx_int = carr_sv_parse_int(&idx);
+                carr_vec_append(&vt_idxs, idx_int - 1);
+                // @TODO: coloca idx_int no vec de índices para texturas
+                if (buf_sv.len > 0) {
+                    idx = carr_sv_chop_by_delim(&buf_sv, '/');
+                    idx_int = carr_sv_parse_int(&idx);
+                    // @TODO: criar mecanismo para lidar com normais
+                    // @TODO: coloca idx_int no vec de índices para normais
+                }
+            }
+
+            buf_sv = carr_sv_from_cstr(buf3);
+            idx = carr_sv_chop_by_delim(&buf_sv, '/');
+            idx_int = carr_sv_parse_int(&idx);
+            carr_vec_append(&v_idxs, idx_int - 1);
+            if (buf_sv.len > 0) {
+                idx = carr_sv_chop_by_delim(&buf_sv, '/');
+                idx_int = carr_sv_parse_int(&idx);
+                carr_vec_append(&vt_idxs, idx_int - 1);
+                // @TODO: coloca idx_int no vec de índices para texturas
+                if (buf_sv.len > 0) {
+                    idx = carr_sv_chop_by_delim(&buf_sv, '/');
+                    idx_int = carr_sv_parse_int(&idx);
+                    // @TODO: criar mecanismo para lidar com normais
+                    // @TODO: coloca idx_int no vec de índices para normais
+                }
+            }
+
+
+
+        } else {
+            printf("[WARNING] Unknown Vertex Data Tag: '%.*s'\n", (int)tag.len, tag.data);
+        }
+
+    }
+
+
+    if (vt_idxs.len != 0) {
+        assert(vt_idxs.len == v_idxs.len);
+    }
+
+    /* @TODO: array de índices para normais
+    if (vn_idxs.len != 0) {
+        assert(vn_idxs.len == v_idxs.len);
+    }
+    */
+
+    printf("VIDXS   => { data: %p, len: %lu, cap: %lu }\n", v_idxs.items, v_idxs.len, v_idxs.cap);
+    printf("VT_IDXS => { data: %p, len: %lu, cap: %lu }\n", vt_idxs.items, vt_idxs.len, vt_idxs.cap);
+
+    printf(" ARRAY DE COORDENADAS \n");
+    for (int i = 0; i < vs.len; ++i) {
+        printf("[%d] %f\n", i, vs.items[i]);
+    }
+
+
+
+    for (int i = 0; i < v_idxs.len; ++i) {
+        int vidx = v_idxs.items[i] * 3;
+        
+        printf("----\n");
+        printf("VERTEX IDX = %d\n", vidx);
+
+        float x = vs.items[vidx + 0];
+        float y = vs.items[vidx + 1];
+        float z = vs.items[vidx + 2];
+
+        printf(" x = %f, y = %f, z = %f \n", x, y, z);
+
+        float u = 0.0f;
+        float v = 0.0f;
+
+        if (vt_idxs.len > 0) {
+            int vtidx = vt_idxs.items[i] * 2;
+            u = vts.items[vtidx + 0];
+            v = vts.items[vtidx + 1];
+        }
+
+        Vertex vertex = {
+            .pos     = { .x = x,    .y = y,    .z = z,   },
+            .color   = { .r = 1.0f, .g = 1.0f, .b = 1.0f },
+            .tex_pos = { .x = u,    .y = v               },
+        };
+
+        carr_vec_append(&verts, vertex);
+        carr_vec_append(&faces, verts.len - 1);
+
+        printf("  FINAL FACE IDX = %lu\n", verts.len - 1);
+        printf("-----\n");
+        // __asm__("int3");
+
+    }
+
+    carr_vec_free(&vs);
+    carr_vec_free(&vts);
+    carr_vec_free(&v_idxs);
+    carr_vec_free(&vt_idxs);
+    carr_sb_free(&sb);
+
+
+    obj.vertices   = verts;
+    obj.faces      = faces;
+    obj.texture_id = (GLuint)-1; // -1 == 429496729, indicates no texture
+
+    default_shaders(&obj);
+
+    return obj;
 }
 
-void GLutil_draw()
+
+
+
+
+
+
+
+
+
+
+
+void GLutil_load_obj_to_GPU(GLutil_ObjModel* obj)
 {
-    glBindVertexArray(current_vao);
-    glDrawElements(GL_TRIANGLES, current_ebo_count, GL_UNSIGNED_INT, 0);
+    // create GPU buffers for vertex and indexes data
+    glGenVertexArrays(1, &obj->vao_id); // VAO => Stores Vertex Attributes Layout and overall configuration of other buffers
+    glGenBuffers(1,      &obj->vbo_id); // VBO => Stores Vertex Attributes Raw Data
+    glGenBuffers(1,      &obj->ebo_id); // EBO => Stores Index Data that points to the VBO as to define the vertices of a face
+
+    // bind the Vertex Attributes Array, which holds all the 
+    // configurations for the other buffers 
+    // (the Vertex Attributes corresponds to the GLutil_Vertex struct)
+    glBindVertexArray(obj->vao_id);
+
+    // bind and load the vertices' coordinates 
+    glBindBuffer(GL_ARRAY_BUFFER, obj->vbo_id);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLutil_Vertex)*obj->vertices.len, obj->vertices.items, GL_STATIC_DRAW);
+
+    // bind and load the faces' vertices indexes
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, obj->ebo_id);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)*obj->faces.len, obj->faces.items, GL_STATIC_DRAW );
+
+    // create an individual Attribute Pointer associated with each field 
+    // in the GLutil_Vertex struct so that it's usable from the shaders
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(*obj->vertices.items), (void*)offsetof(GLutil_Vertex, pos));
+    glEnableVertexAttribArray(0);
+
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(*obj->vertices.items), (void*)offsetof(GLutil_Vertex, color));
+    glEnableVertexAttribArray(1);
+
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(*obj->vertices.items), (void*)offsetof(GLutil_Vertex, tex_pos));
+    glEnableVertexAttribArray(2);
+
+    // bind default buffer and vertex array as a cleanup
+    glBindBuffer(GL_ARRAY_BUFFER, 0); 
+    glBindVertexArray(0); 
+
+}
+
+void GLutil_render_obj(GLutil_ObjModel* obj)
+{
+
+    glUniform1i(glGetUniformLocation(obj->shader_program, "the_texture"), 0);
+    if ( obj->texture_id == (GLuint)-1 ) {
+        glUniform1i(glGetUniformLocation(obj->shader_program, "has_texture"), false);
+    } else {
+        glUniform1i(glGetUniformLocation(obj->shader_program, "has_texture"), true);
+        glBindTexture(GL_TEXTURE_2D, obj->texture_id);
+    }
+
+    glUseProgram(obj->shader_program);
+    glBindVertexArray(obj->vao_id);
+    glDrawElements(GL_TRIANGLES, obj->faces.len, GL_UNSIGNED_INT, 0);
     // printf("[DRAW] Error: %s\n", glErrorNames[glGetError()]);
 }
 
