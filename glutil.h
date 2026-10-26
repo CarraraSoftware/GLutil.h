@@ -942,58 +942,28 @@ ObjModel load_obj_file(const char* file_path)
             
             sscanf(linebuf, "%s %s %s", buf1, buf2, buf3);
 
-            CarrStringView buf_sv = carr_sv_from_cstr(buf1);
-            CarrStringView idx = carr_sv_chop_by_delim(&buf_sv, '/');
-            int idx_int = carr_sv_parse_int(&idx);
-            carr_vec_append(&v_idxs, idx_int - 1);
-            if (buf_sv.len > 0) {
-                idx = carr_sv_chop_by_delim(&buf_sv, '/');
-                idx_int = carr_sv_parse_int(&idx);
-                carr_vec_append(&vt_idxs, idx_int - 1);
-                // @TODO: coloca idx_int no vec de índices para texturas
+            char* buffers[3] = { buf1, buf2, buf3 };
+
+            for (int i = 0; i < 3; ++i) {
+
+                char* buf = buffers[i];
+
+                CarrStringView buf_sv = carr_sv_from_cstr(buf);
+                CarrStringView idx = carr_sv_chop_by_delim(&buf_sv, '/');
+                int idx_int = carr_sv_parse_int(&idx);
+                carr_vec_append(&v_idxs, idx_int - 1);
                 if (buf_sv.len > 0) {
                     idx = carr_sv_chop_by_delim(&buf_sv, '/');
                     idx_int = carr_sv_parse_int(&idx);
-                    // @TODO: criar mecanismo para lidar com normais
-                    // @TODO: coloca idx_int no vec de índices para normais
+                    carr_vec_append(&vt_idxs, idx_int - 1);
+                    if (buf_sv.len > 0) {
+                        idx = carr_sv_chop_by_delim(&buf_sv, '/');
+                        idx_int = carr_sv_parse_int(&idx);
+                        // @TODO: criar mecanismo para lidar com normais
+                        // @TODO: coloca idx_int no vec de índices para normais
+                    }
                 }
             }
-
-            buf_sv = carr_sv_from_cstr(buf2);
-            idx = carr_sv_chop_by_delim(&buf_sv, '/');
-            idx_int = carr_sv_parse_int(&idx);
-            carr_vec_append(&v_idxs, idx_int - 1);
-            if (buf_sv.len > 0) {
-                idx = carr_sv_chop_by_delim(&buf_sv, '/');
-                idx_int = carr_sv_parse_int(&idx);
-                carr_vec_append(&vt_idxs, idx_int - 1);
-                // @TODO: coloca idx_int no vec de índices para texturas
-                if (buf_sv.len > 0) {
-                    idx = carr_sv_chop_by_delim(&buf_sv, '/');
-                    idx_int = carr_sv_parse_int(&idx);
-                    // @TODO: criar mecanismo para lidar com normais
-                    // @TODO: coloca idx_int no vec de índices para normais
-                }
-            }
-
-            buf_sv = carr_sv_from_cstr(buf3);
-            idx = carr_sv_chop_by_delim(&buf_sv, '/');
-            idx_int = carr_sv_parse_int(&idx);
-            carr_vec_append(&v_idxs, idx_int - 1);
-            if (buf_sv.len > 0) {
-                idx = carr_sv_chop_by_delim(&buf_sv, '/');
-                idx_int = carr_sv_parse_int(&idx);
-                carr_vec_append(&vt_idxs, idx_int - 1);
-                // @TODO: coloca idx_int no vec de índices para texturas
-                if (buf_sv.len > 0) {
-                    idx = carr_sv_chop_by_delim(&buf_sv, '/');
-                    idx_int = carr_sv_parse_int(&idx);
-                    // @TODO: criar mecanismo para lidar com normais
-                    // @TODO: coloca idx_int no vec de índices para normais
-                }
-            }
-
-
 
         } else {
             printf("[WARNING] Unknown Vertex Data Tag: '%.*s'\n", (int)tag.len, tag.data);
