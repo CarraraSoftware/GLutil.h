@@ -20,3 +20,7 @@ quadtree:
 cube:
 	gcc -o $(OUT_DIR)cube examples/999-textured_cube/main.c $(LINKER_FLAGS)
 	$(OUT_DIR)cube
+
+ping-pong:
+	gcc -o $(OUT_DIR)ping-pong examples/200-ping-pong/main.c $(LINKER_FLAGS)
+	$(OUT_DIR)ping-pong
