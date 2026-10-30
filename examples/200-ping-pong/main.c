@@ -1,7 +1,7 @@
 /*
  *
- * Fortemente baseado em https://github.com/tsoding/ping-pong-love-remastered?tab=readme-ov-file
- * Licensa completa no fim do arquivo.
+ * Fortemente baseado em https://github.com/tsoding/ping-pong-love-remastered
+ * Licença completa no fim do arquivo.
  *
  */
 
