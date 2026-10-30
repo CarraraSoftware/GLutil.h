@@ -69,7 +69,18 @@
 #define BLACK  GLUTIL_BLACK
 
 #define Color   GLutil_Color
+
 #define Vec2f   GLutil_Vec2f
+#define Vec3f   GLutil_Vec3f
+#define Vec4f   GLutil_Vec4f
+
+#define Mat2x2f  GLutil_Mat2x2f
+#define Mat2f    GLutil_Mat2f
+#define Mat3x3f  GLutil_Mat3x3f
+#define Mat3f    GLutil_Mat3f
+#define Mat4x4f  GLutil_Mat4x4f
+#define Mat4f    GLutil_Mat4f
+
 
 #define Vertex   GLutil_Vertex
 #define Vertices GLutil_Vertices
@@ -85,13 +96,34 @@
 #define ortho2D  GLutil_ortho2D
 #define clear_bg GLutil_clear_bg
 
+#define wireframe_mode GLutil_wireframe_mode
+
 #define Vec2f_add      GLutil_Vec2f_add
-#define Vec2f_subtract GLutil_Vec2f_subtract
+#define Vec2f_sub      GLutil_Vec2f_sub
 #define Vec2f_sqlength GLutil_Vec2f_sqlength
 #define Vec2f_length   GLutil_Vec2f_length
 #define Vec2f_rotccw   GLutil_Vec2f_rotccw
 #define Vec2f_rotcw    GLutil_Vec2f_rotcw
+#define Vec2f_dot GLutil_Vec2f_dot
+#define Vec2f_apply_mat2x2 GLutil_Vec2f_apply_mat2x2
+#define Vec2f_scale GLutil_Vec2f_scale
 
+#define Vec3f_add GLutil_Vec3f_add
+#define Vec3f_sub GLutil_Vec3f_sub
+#define Vec3f_sqlength GLutil_Vec3f_sqlength
+#define Vec3f_length GLutil_Vec3f_length
+#define Vec3f_div GLutil_Vec3f_div
+#define Vec3f_normalize GLutil_Vec3f_normalize
+#define Vec3f_scale GLutil_Vec3f_scale
+#define Vec3f_dot GLutil_Vec3f_dot
+#define Vec3f_cross GLutil_Vec3f_cross
+
+#define Mat2x2f_mul GLutil_Mat2x2f_mul
+#define Mat3x3f_mul GLutil_Mat3x3f_mul
+#define Mat4x4f_mul GLutil_Mat4x4f_mul
+
+#define CHECK_GL_ERROR  GLUTIL_CHECK_GL_ERROR
+#define check_gl_error_ GLutil_check_gl_error_
 
 #define get_time_nanos    GLutil_get_time_nanos
 #define begin_frame       GLutil_begin_frame
@@ -100,6 +132,7 @@
 #define present           GLutil_present
 #define set_target_fps    GLutil_set_target_fps
 #define next_event        GLutil_next_event
+#define t_secs            GLutil_t_secs
 
 #define load_shader        GLutil_load_shader
 #define default_shaders    GLutil_default_shaders
@@ -109,8 +142,10 @@
 #define stop_using_shaders GLutil_stop_using_shaders
 */
 
-#define render_obj      GLutil_render_obj
-#define load_obj_to_GPU GLutil_load_obj_to_GPU
+#define render_obj       GLutil_render_obj
+#define load_obj_to_GPU  GLutil_load_obj_to_GPU
+
+#define load_texture     GLutil_load_texture
 
 #endif // GLUTIL_INCLUDE_PREFIX
 
@@ -161,10 +196,67 @@ typedef struct {
 
 
 typedef struct  {
-    float x;
-    float y;
+    float x, y;
 } GLutil_Vec2f;
 
+
+typedef struct {
+    float x, y, z;
+} GLutil_Vec3f;
+
+typedef struct {
+    float x, y, z, w;
+} GLutil_Vec4f;
+
+typedef union {
+    float data[4];
+
+    Vec2f rows[2];
+
+    struct {
+        // _[row][col]
+        float _11; float _12;
+        float _21; float _22;
+    };
+
+} GLutil_Mat2x2f;
+
+typedef GLutil_Mat2x2f GLutil_Mat2f;
+
+typedef struct {
+    union {
+        float data[9];
+
+        Vec3f rows[3];
+
+        struct {
+            float _11; float _12; float _13;
+            float _21; float _22; float _23;
+            float _31; float _32; float _33;
+        };
+    };
+
+
+} GLutil_Mat3x3f;
+
+typedef GLutil_Mat3x3f GLutil_Mat3f;
+
+typedef struct {
+    union {
+        float data[16];
+
+        Vec4f rows[4];
+
+        struct {
+            float _11; float _12; float _13; float _14;
+            float _21; float _22; float _23; float _24;
+            float _31; float _32; float _33; float _34;
+            float _41; float _42; float _43; float _44;
+        };  
+    };
+} GLutil_Mat4x4f;
+
+typedef GLutil_Mat4x4f GLutil_Mat4f;
 
  typedef enum {
     GLUTIL_VERT_SHADER = GL_VERTEX_SHADER,
@@ -175,11 +267,7 @@ typedef struct  {
 #define GLutil_Vertex_XYZ_size 3
 typedef struct {
     // @TODO: add Vec3f
-    struct {
-        float x;
-        float y;
-        float z;
-    } pos;
+    Vec3f pos;
 
     struct {
         float r;
@@ -206,82 +294,80 @@ typedef struct {
 } GLutil_Faces;
 
 
-
 typedef struct {
     GLutil_Vertices vertices;  // vertex data parsed from .obj file
     GLutil_Faces    faces;     // face   data parsed from .obj file
 
     GLuint vbo_id, ebo_id, vao_id;  // ids (or names?) returned by openGL when vertex data is loaded into the GPU
 
-    GLuint texture_id;              // id to the texture_id returned by OpenGL when the texture data is loaded into the GPU
-                                    // a value of -1 (4294967295), means there's no texture associated with this model 
 
+    // @NOTE: 
+    // talvez esse campo deva ser interpretado como o shader padrão associado
+    // a essa model, mas através de um Vec<Shader> em algum lugar podemos
+    // permitir adicionar mais shaders dinamicamente
     GLuint shader_program;          // id of compiled and linked shader program to use
                                     // a value of -1 (4294967295), means there's no shader associated with this model 
 } GLutil_ObjModel;
-
-
-
-// @NOTE: does it even make sense to just have a bunch of shaders
-//        completely devoid of context? like, not associated with a texture
-//        or with a model or with anything at all?
-/*
-#define SHADERS_CAP 1024
-int SHADERS_COUNT = 0;
-GLuint SHADERS[SHADERS_CAP];
-*/
-// GLuint current_shader_program = -1;
-
 
 
 void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h);            // inicializa Display, Window e o OpenGLContext. e mais alguns estados internos
 void GLutil_destroy(GLutil* glutil);                                         // desaloca e fecha todos os recursos alocados por GLutil.h
 
 
+// api legado do OpenGL
 void GLutil_circle(GLutil_Vec2f center, int radius, GLutil_Color color);     // desenha um círculo através de GL_TRIANGLE_FAN, o nível de precisão do círculo pode ser alterado pelo macro GLUTIL_CIRCLE_PRECISION
 void GLutil_line(GLutil_Vec2f a, GLutil_Vec2f b, GLutil_Color clr, float w);
 void GLutil_rect(GLutil_Vec2f topleft, float w, float h, GLutil_Color clr);  
 void GLutil_ortho2D(GLdouble left, GLdouble right, GLdouble top, GLdouble bottom);
-void GLutil_clear_bg( Color color );
-
 
 GLutil_Vec2f GLutil_Vec2f_add(GLutil_Vec2f a, GLutil_Vec2f b);
-GLutil_Vec2f GLutil_Vec2f_subtract(GLutil_Vec2f a, GLutil_Vec2f b);
+GLutil_Vec2f GLutil_Vec2f_sub(GLutil_Vec2f a, GLutil_Vec2f b);
 float GLutil_Vec2f_sqlength(GLutil_Vec2f v);
 float GLutil_Vec2f_length(GLutil_Vec2f v);
 GLutil_Vec2f GLutil_Vec2f_rotccw(GLutil_Vec2f v, float theta);
 GLutil_Vec2f GLutil_Vec2f_rotcw(GLutil_Vec2f v, float theta);
+float GLutil_Vec2f_dot(GLutil_Vec2f a, GLutil_Vec2f b);
+GLutil_Vec2f GLutil_Vec2f_apply_mat2x2(GLutil_Vec2f v, Mat2x2f A);
+GLutil_Vec2f GLutil_Vec2f_scale(GLutil_Vec2f v, float sx, float sy);
 
+
+GLutil_Vec3f GLutil_Vec3f_add(GLutil_Vec3f a, GLutil_Vec3f b);
+GLutil_Vec3f GLutil_Vec3f_sub(GLutil_Vec3f a, GLutil_Vec3f b);
+float GLutil_Vec3f_sqlength(GLutil_Vec3f v);
+float GLutil_Vec3f_length(GLutil_Vec3f v);
+GLutil_Vec3f GLutil_Vec3f_div(GLutil_Vec3f v, float d);
+GLutil_Vec3f GLutil_Vec3f_normalize(GLutil_Vec3f v);
+GLutil_Vec3f GLutil_Vec3f_scale(GLutil_Vec3f v, float s);
+float GLutil_Vec3f_dot(GLutil_Vec3f a, GLutil_Vec3f b);
+GLutil_Vec3f GLutil_Vec3f_cross(GLutil_Vec3f a, GLutil_Vec3f b);
+
+GLutil_Mat2x2f GLutil_Mat2x2f_mul(GLutil_Mat2x2f A, GLutil_Mat2x2f B);
+GLutil_Mat3x3f GLutil_Mat3x3f_mul(GLutil_Mat3x3f A, GLutil_Mat3x3f B);
+GLutil_Mat4x4f GLutil_Mat4x4f_mul(GLutil_Mat4x4f a, GLutil_Mat4x4f b);
+
+#define GLUTIL_CHECK_GL_ERROR() GLutil_check_gl_error_(__LINE__, __FILE__, __FUNCTION__)
+void GLutil_check_gl_error_(int line, const char* file, const char* func);
 
 uint64_t GLutil_get_time_nanos(void);
-uint64_t GLutil_begin_frame(GLutil *glutil);
 uint64_t GLutil_frame_delta_nanos(GLutil *glutil);
-void GLutil_end_frame(GLutil *glutil);
-void GLutil_present(GLutil* glutil);
-void GLutil_set_target_fps(GLutil* glutil, float fps);
+uint64_t GLutil_begin_frame(GLutil *glutil);
+void GLutil_clear_bg( Color color );
+void GLutil_end_frame(GLutil *glutil); // faz o swap dos buffers E atualiza o estado interno do GLutil (principalmente o delta entre frames)
+void GLutil_present(GLutil* glutil);  // faz o swap dos buffers do opengl
+void GLutil_set_target_fps(GLutil* glutil, float fps); // usa fps para calcular o delay entre frames como 1/fps e espera o delay somente se delay > 0
 bool GLutil_next_event(GLutil* glutil, XEvent* event);
+float GLutil_t_secs(GLutil* glutil);
 
 GLuint GLutil_load_shader(const char* name, GLutil_ShaderType type);
 void GLutil_default_shaders(GLutil_ObjModel* obj);
 
-/* @TODO: rethink these functions
-void GLutil_flush_shaders();
-bool GLutil_use_shaders();
-void GLutil_stop_using_shaders();
-*/
-
-void GLutil_render_obj(GLutil_ObjModel* obj);
+void GLutil_render_obj(GLutil_ObjModel* obj, float t);
 void GLutil_load_obj_to_GPU(GLutil_ObjModel* obj);
 
-// char* glErrorNames[] = {
-//     [0] = "GL_NO_ERROR ",
-//     [0x0500] = "GL_INVALID_ENUM",
-//     [0x0501] = "GL_INVALID_VALUE",
-//     [0x0502] = "GL_INVALID_OPERATION",
-//     [0x0503] = "GL_STACK_OVERFLOW",
-//     [0x0504] = "GL_STACK_UNDERFLOW",
-//     [0x0505] = "GL_OUT_OF_MEMORY",
-// };
+GLuint GLutil_load_texture(const char* texture_name);
+
+void GLutil_wireframe_mode();
+
 
 
 #endif // GLUTIL_H_
@@ -292,7 +378,6 @@ void GLutil_load_obj_to_GPU(GLutil_ObjModel* obj);
 
 
 
-// #define GLUTIL_IMPLEMENTATION 
 #ifdef GLUTIL_IMPLEMENTATION
 
 
@@ -377,9 +462,13 @@ const char* INPUT_TYPE_NAMES[] = {
    X( glBindVertexArray,          void,         GLuint array                                                                                         ) \
    X( glGetProgramiv,             void,         GLuint program, GLenum pname, GLint *params                                                          ) \
    X( glGetUniformLocation,       GLint,        GLuint program, const GLchar *name                                                                   ) \
-   X( glUniform1f,                void,         GLint location, GLfloat v0                                                                           ) \
    X( glGenerateMipmap,           void,         GLenum target                                                                                        ) \
-   X( glUniform1i,                void,         GLint location, GLint v0                                                                             )
+   X( glUniform1i,                void,         GLint location, GLint v0                                                                             ) \
+   X( glUniform1f,                void,         GLint location, GLfloat v0                                                                           ) \
+   X( glUniform3fv,               void,         GLint location, GLsizei count, const GLfloat* value                                                  ) \
+   X( glUniformMatrix3fv,         void,         GLint location, GLsizei count, GLboolean transpose, const GLfloat* value                             ) \
+   X( glUniformMatrix4fv,         void,         GLint location, GLsizei count, GLboolean transpose, const GLfloat* value                             )
+    
    // X( glGenTextures,              void,         GLsizei n, GLuint* textures                                                                          )
       
 #define GLUTIL_CONCAT_MACRO_NAMES(x, y) x ## y
@@ -543,9 +632,12 @@ void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h)
     GLutil_make_window(glutil, w, h);
     GLutil_make_context(glutil);
 
+    // permite usar a api legado do OpenGL, mas não afeta o uso de shaders
     glMatrixMode( GL_PROJECTION );
     glLoadIdentity();
-    GLutil_ortho2D(0, w, 0, h);
+    GLutil_ortho2D(0, w, 0, h); // coloca origem no topo esquerda
+    glEnable(GL_DEPTH_TEST);
+
 
     glutil->cur_t_nanos  = 0;
     glutil->prev_t_nanos = 0;
@@ -561,9 +653,47 @@ void GLutil_destroy(GLutil* glutil)
 }
 
 
+
+void GLutil_check_gl_error_(int line, const char* file, const char* func)
+{
+    GLenum err = glGetError();
+    switch (err) {
+		case GL_NO_ERROR: {
+			// printf("%s:%d:%s GL_NO_ERROR \n", file, line, func);
+		} break;
+		case GL_INVALID_ENUM: {
+			printf("%s:%d:%s GL_INVALID_ENUM \n", file, line, func);
+            exit(1);
+		} break;
+		case GL_INVALID_VALUE: {
+			printf("%s:%d:%s GL_INVALID_VALUE \n", file, line, func);
+            exit(2);
+		} break;
+		case GL_INVALID_OPERATION: {
+			printf("%s:%d:%s GL_INVALID_OPERATION \n", file, line, func);
+            exit(3);
+		} break;
+		case GL_INVALID_FRAMEBUFFER_OPERATION: {
+			printf("%s:%d:%s GL_INVALID_FRAMEBUFFER_OPERATION \n", file, line, func);
+            exit(4);
+		} break;
+		case GL_OUT_OF_MEMORY: {
+			printf("%s:%d:%s GL_OUT_OF_MEMORY \n", file, line, func);
+            exit(5);
+		} break;
+    }
+}
+
+
+
 void GLutil_ortho2D(GLdouble left, GLdouble right, GLdouble top, GLdouble bottom)
 {
     glOrtho(left, right, bottom, top, -1, 1);
+}
+
+void GLutil_wireframe_mode()
+{
+    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 }
 
 void GLutil_clear_bg( Color color )
@@ -619,6 +749,11 @@ bool GLutil_next_event(GLutil* glutil, XEvent* event)
     return XCheckMaskEvent( glutil->display, ALL_INPUT_MASKS , event );
 }
 
+float GLutil_t_secs(GLutil* glutil)
+{
+    return ( (float)glutil->cur_t_nanos / 1000.0f / 1000.0f / 1000.0f );
+}
+
 
 /*******************************************************************************
  *                     VETORES E ALGEBRA LINEAR                                *
@@ -632,7 +767,7 @@ GLutil_Vec2f GLutil_Vec2f_add(GLutil_Vec2f a, GLutil_Vec2f b)
     };
 }
 
-GLutil_Vec2f GLutil_Vec2f_subtract(GLutil_Vec2f a, GLutil_Vec2f b)
+GLutil_Vec2f GLutil_Vec2f_sub(GLutil_Vec2f a, GLutil_Vec2f b)
 {
     return (GLutil_Vec2f) {
         .x = a.x - b.x,
@@ -678,6 +813,156 @@ GLutil_Vec2f GLutil_Vec2f_rotcw(GLutil_Vec2f v, float theta)
         return v_rot;
 }
 
+float GLutil_Vec2f_dot(GLutil_Vec2f a, GLutil_Vec2f b)
+{
+    return  a.x * b.x + a.y * b.y;
+}
+
+GLutil_Vec2f GLutil_Vec2f_apply_mat2x2(GLutil_Vec2f v, Mat2x2f A)
+{
+    //  | A00  A01 | * | vx | =>  | dot( {A00, A01}, v ) |
+    //  | A10  A11 |   | vy |     | dot( {A10, A11}, v ) |
+    return (GLutil_Vec2f) {
+        .x = GLutil_Vec2f_dot(A.rows[0], v),
+        .y = GLutil_Vec2f_dot(A.rows[1], v),
+    };
+}
+
+GLutil_Vec2f GLutil_Vec2f_scale(GLutil_Vec2f v, float sx, float sy)
+{
+    return GLutil_Vec2f_apply_mat2x2(v, (Mat2x2f) {
+            ._11 = sx, ._12 = 00,
+            ._21 = 00, ._22 = sy,
+    });
+}
+
+
+GLutil_Vec3f GLutil_Vec3f_add(GLutil_Vec3f a, GLutil_Vec3f b)
+{
+    return (GLutil_Vec3f) {
+        .x = a.x + b.x,
+        .y = a.y + b.y,
+        .z = a.z + b.z,
+    };
+}
+
+
+GLutil_Vec3f GLutil_Vec3f_sub(GLutil_Vec3f a, GLutil_Vec3f b)
+{
+    return (GLutil_Vec3f) {
+        .x = a.x - b.x,
+        .y = a.y - b.y,
+        .z = a.z - b.z,
+    };
+}
+
+
+float GLutil_Vec3f_sqlength(GLutil_Vec3f v)
+{
+    return v.x*v.x + v.y*v.y + v.z*v.z;
+}
+
+float GLutil_Vec3f_length(GLutil_Vec3f v)
+{
+    return sqrt(GLutil_Vec3f_sqlength(v));
+}
+
+GLutil_Vec3f GLutil_Vec3f_div(GLutil_Vec3f v, float d)
+{
+    assert(d != 0);
+    return (GLutil_Vec3f) {
+        .x = v.x / d,
+        .y = v.y / d,
+        .z = v.z / d,
+    };
+}
+
+GLutil_Vec3f GLutil_Vec3f_normalize(GLutil_Vec3f v)
+{
+    return GLutil_Vec3f_div(v, GLutil_Vec3f_length(v));
+}
+
+
+
+GLutil_Vec3f GLutil_Vec3f_scale(GLutil_Vec3f v, float s)
+{
+    return (GLutil_Vec3f) {
+        .x = v.x * s,
+        .y = v.y * s,
+        .z = v.z * s,
+    };
+}
+
+float GLutil_Vec3f_dot(GLutil_Vec3f a, GLutil_Vec3f b)
+{
+    return a.x * b.x  + a.y * b.y + a.z * b.z ;
+}
+
+GLutil_Vec3f GLutil_Vec3f_cross(GLutil_Vec3f a, GLutil_Vec3f b)
+{
+    return (GLutil_Vec3f){
+        .x = a.y * b.z - a.z * b.y,
+        .y = a.z * b.x - a.x * b.z,
+        .z = a.x * b.y - a.y * b.x,
+    };
+}
+
+
+GLutil_Mat2x2f GLutil_Mat2x2f_mul(GLutil_Mat2x2f A, GLutil_Mat2x2f B)
+{
+    //                                    / row_0  /  / col_0  /          / row_0  /  / col_1  /  
+    // | A00 A01 | * | B00 B01 | = | dot( {A00, A01}, {B00, B10} )   dot( {A00, A01}, {B01, B11} )
+    // | A10 A11 |   | B10 B11 |   | dot( {A10, A11}, {B00, B10} )   dot( {A10, A11}, {B01, B11} )
+    //                                    / row_1 /   / col_0  /          / row_1 /   / col_1  /  
+    return (GLutil_Mat2x2f) {
+        ._11 = GLutil_Vec2f_dot( A.rows[0], (GLutil_Vec2f) {B._11, B._21}), ._12 = GLutil_Vec2f_dot( A.rows[0], (GLutil_Vec2f) {B._12, B._22}),
+        ._21 = GLutil_Vec2f_dot( A.rows[1], (GLutil_Vec2f) {B._11, B._21}), ._22 = GLutil_Vec2f_dot( A.rows[1], (GLutil_Vec2f) {B._12, B._22}),
+    };
+}
+
+GLutil_Mat3x3f GLutil_Mat3x3f_mul(GLutil_Mat3x3f A, GLutil_Mat3x3f B)
+{
+
+    GLutil_Mat3x3f m;
+    m._11 = A._11*B._11 + A._12*B._21 + A._13*B._31;
+    m._12 = A._11*B._12 + A._12*B._22 + A._13*B._32;
+    m._13 = A._11*B._13 + A._12*B._23 + A._13*B._33;
+    m._21 = A._21*B._11 + A._22*B._21 + A._23*B._31;
+    m._22 = A._21*B._12 + A._22*B._22 + A._23*B._32;
+    m._23 = A._21*B._13 + A._22*B._23 + A._23*B._33;
+    m._31 = A._31*B._11 + A._32*B._21 + A._33*B._31;
+    m._32 = A._31*B._12 + A._32*B._22 + A._33*B._32;
+    m._33 = A._31*B._13 + A._32*B._23 + A._33*B._33;
+    return m;
+
+
+}
+
+GLutil_Mat4x4f GLutil_Mat4x4f_mul(GLutil_Mat4x4f A, GLutil_Mat4x4f B)
+{
+    // from: https://github.com/tsoding/la/blob/master/la.h
+    GLutil_Mat4x4f m;
+    m._11 = A._11*B._11 + A._12*B._21 + A._13*B._31 + A._14*B._41;
+    m._12 = A._11*B._12 + A._12*B._22 + A._13*B._32 + A._14*B._42;
+    m._13 = A._11*B._13 + A._12*B._23 + A._13*B._33 + A._14*B._43;
+    m._14 = A._11*B._14 + A._12*B._24 + A._13*B._34 + A._14*B._44;
+    m._21 = A._21*B._11 + A._22*B._21 + A._23*B._31 + A._24*B._41;
+    m._22 = A._21*B._12 + A._22*B._22 + A._23*B._32 + A._24*B._42;
+    m._23 = A._21*B._13 + A._22*B._23 + A._23*B._33 + A._24*B._43;
+    m._24 = A._21*B._14 + A._22*B._24 + A._23*B._34 + A._24*B._44;
+    m._31 = A._31*B._11 + A._32*B._21 + A._33*B._31 + A._34*B._41;
+    m._32 = A._31*B._12 + A._32*B._22 + A._33*B._32 + A._34*B._42;
+    m._33 = A._31*B._13 + A._32*B._23 + A._33*B._33 + A._34*B._43;
+    m._34 = A._31*B._14 + A._32*B._24 + A._33*B._34 + A._34*B._44;
+    m._41 = A._41*B._11 + A._42*B._21 + A._43*B._31 + A._44*B._41;
+    m._42 = A._41*B._12 + A._42*B._22 + A._43*B._32 + A._44*B._42;
+    m._43 = A._41*B._13 + A._42*B._23 + A._43*B._33 + A._44*B._43;
+    m._44 = A._41*B._14 + A._42*B._24 + A._43*B._34 + A._44*B._44;
+    return m;
+}
+
+
+
 /*******************************************************************************
  *                     DESENHAR FORMAS GEOMÉTRICAS                             *
  *******************************************************************************/
@@ -691,7 +976,6 @@ void GLutil_line(GLutil_Vec2f a, GLutil_Vec2f b, GLutil_Color clr, float w)
      glVertex2f( a.x, a.y );
      glVertex2f( b.x, b.y );
      glEnd();
-
 }
 
 
@@ -787,8 +1071,6 @@ GLuint GLutil_load_shader(const char* name, GLutil_ShaderType type)
 }
 
 
-
-
 void GLutil_default_shaders(GLutil_ObjModel* obj)
 {
     if (obj->shader_program != (GLuint)-1) {
@@ -809,42 +1091,6 @@ void GLutil_default_shaders(GLutil_ObjModel* obj)
     obj->shader_program = shader;
     printf("generated default shader program with id = %u\n", shader);
 }
-
-
-/*
-bool GLutil_use_shaders()
-{
-    int ret;
-    GLuint shader_program = glCreateProgram();
-    for (int i = 0; i < SHADERS_COUNT; ++i) {
-        glAttachShader(shader_program, SHADERS[i]);
-
-    }
-    glLinkProgram(shader_program);
-    glGetProgramiv(shader_program, GL_LINK_STATUS, &ret );
-    if (!ret) return false;
-    glUseProgram(shader_program); // @TODO: error handling
-    current_shader_program = shader_program;
-    return true;
-}
-
-
-void GLutil_flush_shaders()
-{
-    for (int i = 0; i < SHADERS_COUNT; ++i) {
-        glDeleteShader(SHADERS[i]);
-    }
-    SHADERS_COUNT = 0;
-}
-
-void GLutil_stop_using_shaders()
-{
-    flush_shaders();
-    if (current_shader_program != -1) {
-        glDeleteProgram(current_shader_program);
-    }
-}
-*/
 
 
 
@@ -982,6 +1228,7 @@ ObjModel load_obj_file(const char* file_path)
     }
     */
 
+    /* @TODO: add debug logging flags?
     printf("VIDXS   => { data: %p, len: %lu, cap: %lu }\n", v_idxs.items, v_idxs.len, v_idxs.cap);
     printf("VT_IDXS => { data: %p, len: %lu, cap: %lu }\n", vt_idxs.items, vt_idxs.len, vt_idxs.cap);
 
@@ -989,20 +1236,23 @@ ObjModel load_obj_file(const char* file_path)
     for (int i = 0; i < vs.len; ++i) {
         printf("[%d] %f\n", i, vs.items[i]);
     }
+    */
 
 
 
     for (int i = 0; i < v_idxs.len; ++i) {
         int vidx = v_idxs.items[i] * 3;
         
-        printf("----\n");
-        printf("VERTEX IDX = %d\n", vidx);
 
         float x = vs.items[vidx + 0];
         float y = vs.items[vidx + 1];
         float z = vs.items[vidx + 2];
 
+        /*
+        printf("----\n");
+        printf("VERTEX IDX = %d\n", vidx);
         printf(" x = %f, y = %f, z = %f \n", x, y, z);
+        */
 
         float u = 0.0f;
         float v = 0.0f;
@@ -1022,8 +1272,10 @@ ObjModel load_obj_file(const char* file_path)
         carr_vec_append(&verts, vertex);
         carr_vec_append(&faces, verts.len - 1);
 
+        /*
         printf("  FINAL FACE IDX = %lu\n", verts.len - 1);
         printf("-----\n");
+        */
         // __asm__("int3");
 
     }
@@ -1037,23 +1289,11 @@ ObjModel load_obj_file(const char* file_path)
 
     obj.vertices   = verts;
     obj.faces      = faces;
-    obj.texture_id = (GLuint)-1; // -1 == 429496729, indicates no texture
 
     default_shaders(&obj);
-
+    
     return obj;
 }
-
-
-
-
-
-
-
-
-
-
-
 
 void GLutil_load_obj_to_GPU(GLutil_ObjModel* obj)
 {
@@ -1092,23 +1332,31 @@ void GLutil_load_obj_to_GPU(GLutil_ObjModel* obj)
 
 }
 
-void GLutil_render_obj(GLutil_ObjModel* obj)
+GLuint GLutil_load_texture(const char* texture_name)
 {
+    GLuint texture_id;
+    int img_width, img_height, n;
+    unsigned char *data = stbi_load(texture_name, &img_width, &img_height, &n, 0);
+    glGenTextures(1, &texture_id);
+    glBindTexture(GL_TEXTURE_2D, texture_id);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-    glUniform1i(glGetUniformLocation(obj->shader_program, "the_texture"), 0);
-    if ( obj->texture_id == (GLuint)-1 ) {
-        glUniform1i(glGetUniformLocation(obj->shader_program, "has_texture"), false);
-    } else {
-        glUniform1i(glGetUniformLocation(obj->shader_program, "has_texture"), true);
-        glBindTexture(GL_TEXTURE_2D, obj->texture_id);
-    }
+    // glActiveTexture(GL_TEXTURE0);
+    glTexImage2D(
+        GL_TEXTURE_2D, 0, GL_RGB,
+        img_width, img_height,
+        0, GL_RGB, GL_UNSIGNED_BYTE,
+        data 
+    ); 
+    glGenerateMipmap(GL_TEXTURE_2D);
 
-    glUseProgram(obj->shader_program);
-    glBindVertexArray(obj->vao_id);
-    glDrawElements(GL_TRIANGLES, obj->faces.len, GL_UNSIGNED_INT, 0);
-    // printf("[DRAW] Error: %s\n", glErrorNames[glGetError()]);
+    stbi_image_free(data);
+
+    return texture_id;
 }
-
 
 
 #endif // GLUTIL_H_
