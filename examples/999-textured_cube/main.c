@@ -116,7 +116,7 @@ int main(void) {
         int uniform_loc = glGetUniformLocation(obj.shader_program, "t");
         glUniform1f(uniform_loc, t);
 
-        render_obj(&obj);
+        render_obj(&obj, t);
 
 
 
