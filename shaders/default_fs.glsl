@@ -24,10 +24,11 @@ void main()
        // float b = 0.2f;
        // FragColor = vec4( r, g, b, 1.0f );
        // FragColor = vec4( vs_color, 1.0f );
+    // FragColor = vec4(1.0, 0.0, 0.0, 1.0);
     if (has_texture == 1) {
         FragColor = texture(the_texture, vs_texture_pos);
     } else {
-        FragColor = vec4(vs_color, 1.0);
+        FragColor = vec4(1.0, 1.0, 1.0, 1.0);
     }
 }
 

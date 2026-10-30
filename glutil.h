@@ -85,7 +85,8 @@
 #define Vertex   GLutil_Vertex
 #define Vertices GLutil_Vertices
 #define Faces    GLutil_Faces
-#define ObjModel GLutil_ObjModel
+#define ObjData  GLutil_ObjData
+#define Model    GLutil_Model
 
 #define init    GLutil_init
 #define destroy GLutil_destroy
@@ -122,6 +123,7 @@
 #define Mat3x3f_mul GLutil_Mat3x3f_mul
 #define Mat4x4f_mul GLutil_Mat4x4f_mul
 
+#define PRINT_ERROR     GLUTIL_PRINT_ERROR
 #define CHECK_GL_ERROR  GLUTIL_CHECK_GL_ERROR
 #define check_gl_error_ GLutil_check_gl_error_
 
@@ -136,16 +138,13 @@
 
 #define load_shader        GLutil_load_shader
 #define default_shaders    GLutil_default_shaders
-/*
-#define flush_shaders      GLutil_flush_shaders
-#define use_shaders        GLutil_use_shaders
-#define stop_using_shaders GLutil_stop_using_shaders
-*/
 
 #define render_obj       GLutil_render_obj
+#define load_obj_file    GLutil_load_obj_file
 #define load_obj_to_GPU  GLutil_load_obj_to_GPU
-
 #define load_texture     GLutil_load_texture
+#define model_from_obj   GLutil_model_from_obj
+#define render_model     GLutil_render_model
 
 #endif // GLUTIL_INCLUDE_PREFIX
 
@@ -154,6 +153,9 @@
 
 #define GLUTIL_COLOR(r, g, b) (Color){ .red = (r), .green = (g), .blue = (b), .alpha = 255 }
 #define GLUTIL_BLACK COLOR(0, 0, 0)
+
+#define GLUTIL_PRINT_ERROR(msg) fprintf(stderr, "%d:%s:%s ERROR: %s", __LINE__, __FILE__, __FUNCTION__, msg)
+#define GLUTIL_CHECK_GL_ERROR() GLutil_check_gl_error_(__LINE__, __FILE__, __FUNCTION__)
 
 #define ALL_INPUT_MASKS ( \
         KeyPressMask       | KeyReleaseMask         | ButtonPressMask          \
@@ -167,6 +169,7 @@
       | OwnerGrabButtonMask )
 
 
+typedef struct GLutil_Camera GLutil_Camera;
 
 typedef struct GLutil {
     Window       window;
@@ -174,6 +177,10 @@ typedef struct GLutil {
     GLXContext   ctx;
     XVisualInfo* vi;
     GLXFBConfig  fbc;
+
+    int winwidth;
+    int winheight;
+
 
     uint64_t     prev_t_nanos;    // timestamp em nanosegundos do último frame
     uint64_t     cur_t_nanos;     // timestamp em nanosegundos do frame atual
@@ -183,6 +190,10 @@ typedef struct GLutil {
     GLuint       current_vao ;
     int          current_ebo_count;
 
+    GLutil_Camera* camera; // @TODO: não consegui organizar as informações de tipos
+                           //        de forma a ter acesso à Camera antes da declaração
+                           //        da struct GLutil, então deixei como pointer mesmo.
+                           //        mas acredito que ter o a struct por valor seria melhor.
 
 } GLutil;
 
@@ -266,7 +277,6 @@ typedef GLutil_Mat4x4f GLutil_Mat4f;
 
 #define GLutil_Vertex_XYZ_size 3
 typedef struct {
-    // @TODO: add Vec3f
     Vec3f pos;
 
     struct {
@@ -293,6 +303,16 @@ typedef struct {
     size_t        cap;
 } GLutil_Faces;
 
+struct GLutil_Camera {
+    GLutil_Vec3f pos;
+    GLutil_Vec3f target;
+    GLutil_Vec3f up;
+
+    float fovX;
+    float near;
+    float far;
+
+};
 
 typedef struct {
     GLutil_Vertices vertices;  // vertex data parsed from .obj file
@@ -307,7 +327,32 @@ typedef struct {
     // permitir adicionar mais shaders dinamicamente
     GLuint shader_program;          // id of compiled and linked shader program to use
                                     // a value of -1 (4294967295), means there's no shader associated with this model 
-} GLutil_ObjModel;
+} GLutil_ObjData;
+
+typedef struct {
+    float    scale;
+    Vec3f    world_pos;
+
+    GLutil_ObjData* geometry;
+    GLuint           texture_id;  // id to the texture_id returned by OpenGL when the texture data is loaded into the GPU
+                                  // a value of -1 (4294967295), means there's no texture associated with this model 
+} GLutil_Model;
+
+
+#define GLUTIL_DEFAULT_CAM_FOV  60.0f
+#define GLUTIL_DEFAULT_CAM_NEAR 0.1f
+#define GLUTIL_DEFAULT_CAM_FAR  100.0f
+
+GLutil_Camera GLUTIL_DEFAULT_CAMERA = {
+    .pos =    { .x = 0.0f, .y = 0.0f, .z = 3.0f },
+    .target = { .x = 0.0f, .y = 0.0f, .z = 0.0f },
+    .up =     { .x = 0.0f, .y = 1.0f, .z = 0.0f },
+
+    .fovX = GLUTIL_DEFAULT_CAM_FOV,
+    .near = GLUTIL_DEFAULT_CAM_NEAR,
+    .far  = GLUTIL_DEFAULT_CAM_FAR,
+};
+
 
 
 void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h);            // inicializa Display, Window e o OpenGLContext. e mais alguns estados internos
@@ -345,9 +390,9 @@ GLutil_Mat2x2f GLutil_Mat2x2f_mul(GLutil_Mat2x2f A, GLutil_Mat2x2f B);
 GLutil_Mat3x3f GLutil_Mat3x3f_mul(GLutil_Mat3x3f A, GLutil_Mat3x3f B);
 GLutil_Mat4x4f GLutil_Mat4x4f_mul(GLutil_Mat4x4f a, GLutil_Mat4x4f b);
 
-#define GLUTIL_CHECK_GL_ERROR() GLutil_check_gl_error_(__LINE__, __FILE__, __FUNCTION__)
 void GLutil_check_gl_error_(int line, const char* file, const char* func);
 
+// FRAME LOOP
 uint64_t GLutil_get_time_nanos(void);
 uint64_t GLutil_frame_delta_nanos(GLutil *glutil);
 uint64_t GLutil_begin_frame(GLutil *glutil);
@@ -358,15 +403,26 @@ void GLutil_set_target_fps(GLutil* glutil, float fps); // usa fps para calcular 
 bool GLutil_next_event(GLutil* glutil, XEvent* event);
 float GLutil_t_secs(GLutil* glutil);
 
-GLuint GLutil_load_shader(const char* name, GLutil_ShaderType type);
-void GLutil_default_shaders(GLutil_ObjModel* obj);
+// CAMERA
+GLutil_Mat3x3f GLutil_model_matrix(GLutil_Camera cam);
+GLutil_Mat4x4f GLutil_view_matrix(GLutil_Camera cam);
+GLutil_Mat4x4f GLutil_projection_matrix(GLutil_Camera cam, float aspectRatio); // @TODO: pensar sobre onde armazenar as informações de width e height da janela, de maneira a opcionalmente não precisar passar o argumento aspectRatio 
 
-void GLutil_render_obj(GLutil_ObjModel* obj, float t);
-void GLutil_load_obj_to_GPU(GLutil_ObjModel* obj);
+// SHADERS
+GLuint GLutil_load_shader(const char* name, GLutil_ShaderType type);
+void GLutil_default_shaders(GLutil_ObjData* obj);
+
+
+// MODELS, OBJ E TEXTURES
+GLutil_ObjData GLutil_load_obj_file(const char* file_path);
+void GLutil_load_obj_to_GPU(GLutil_ObjData* obj);
+
+void GLutil_render_model(GLutil* glutil, GLutil_Model* model);
 
 GLuint GLutil_load_texture(const char* texture_name);
 
 void GLutil_wireframe_mode();
+GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
 
 
 
@@ -626,6 +682,8 @@ void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h)
     GLUTIL_GL_FUNCTIONS_TO_LOAD
 #undef X
 
+    glutil->winwidth = w;
+    glutil->winheight = h;
 
     GLutil_make_display(glutil);
     GLutil_make_fbc_and_vi(glutil);
@@ -638,6 +696,7 @@ void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h)
     GLutil_ortho2D(0, w, 0, h); // coloca origem no topo esquerda
     glEnable(GL_DEPTH_TEST);
 
+    glutil->camera = &GLUTIL_DEFAULT_CAMERA;
 
     glutil->cur_t_nanos  = 0;
     glutil->prev_t_nanos = 0;
@@ -1030,12 +1089,9 @@ void GLutil_rect(GLutil_Vec2f topleft, float w, float h, GLutil_Color clr)
  *                             SHADERS                                         *
  *******************************************************************************/
 
-
-
-
 GLuint GLutil_load_shader(const char* name, GLutil_ShaderType type)
 {
-    GLuint shader_id = glCreateShader(type);
+    GLuint shader_id = glCreateShader(type); GLUTIL_CHECK_GL_ERROR();
 
     FILE* f = fopen(name, "r");
     if (f == NULL) {
@@ -1056,43 +1112,106 @@ GLuint GLutil_load_shader(const char* name, GLutil_ShaderType type)
     fclose(f);
 
     const char* shader_src = data;
-    glShaderSource(shader_id, 1, &shader_src , NULL);
+    glShaderSource(shader_id, 1, &shader_src , NULL); GLUTIL_CHECK_GL_ERROR();
     free(data);
-
-    glCompileShader(shader_id);
-
     
-    /* @TODO: decide if will keep this around or not
-    assert(SHADERS_COUNT < SHADERS_CAP);
-    SHADERS[SHADERS_COUNT++] = shader_id;
-    */
+    glCompileShader(shader_id); GLUTIL_CHECK_GL_ERROR();
 
     return shader_id;
 }
 
 
-void GLutil_default_shaders(GLutil_ObjModel* obj)
+void GLutil_default_shaders(GLutil_ObjData* obj)
 {
     if (obj->shader_program != (GLuint)-1) {
-        glDeleteProgram(obj->shader_program);
+        glDeleteProgram(obj->shader_program); GLUTIL_CHECK_GL_ERROR();
     }
 
-    GLuint shader = glCreateProgram();
-    GLuint vs_id  = GLutil_load_shader(DEFAULT_VERT_SHADER_PATH, GLUTIL_VERT_SHADER);
-    GLuint fs_id  = GLutil_load_shader(DEFAULT_FRAG_SHADER_PATH, GLUTIL_FRAG_SHADER);
+    GLuint shader = glCreateProgram(); GLUTIL_CHECK_GL_ERROR();
+    GLuint vs_id  = GLutil_load_shader(DEFAULT_VERT_SHADER_PATH, GLUTIL_VERT_SHADER); GLUTIL_CHECK_GL_ERROR();
+    GLuint fs_id  = GLutil_load_shader(DEFAULT_FRAG_SHADER_PATH, GLUTIL_FRAG_SHADER); GLUTIL_CHECK_GL_ERROR();
 
-    glAttachShader(shader, vs_id);
-    glAttachShader(shader, fs_id);
-    glLinkProgram(shader);
-    glDeleteShader(vs_id);
-    glDeleteShader(fs_id);
+    glAttachShader(shader, vs_id); GLUTIL_CHECK_GL_ERROR();
+    glAttachShader(shader, fs_id); GLUTIL_CHECK_GL_ERROR();
+    glLinkProgram(shader); GLUTIL_CHECK_GL_ERROR();
+    glDeleteShader(vs_id); GLUTIL_CHECK_GL_ERROR();
+    glDeleteShader(fs_id); GLUTIL_CHECK_GL_ERROR();
 
     // @TODO: error handling
     obj->shader_program = shader;
-    printf("generated default shader program with id = %u\n", shader);
+    printf("Generated Default Shader with id = %u\n", shader);
 }
 
+/*******************************************************************************
+ *                               CAMERA                                        *
+ ******************************************************************************/
 
+GLutil_Mat3x3f GLutil_model_matrix(GLutil_Camera cam)
+{
+    return (GLutil_Mat3x3f) {
+        .data = {                                    
+            1/500.0f, 0,        0, 
+            0,        1/500.0f, 0, 
+            0,        0,        1/500.0f    
+        }
+    };
+}
+
+GLutil_Mat4x4f GLutil_view_matrix(GLutil_Camera cam)
+{
+
+    GLutil_Vec3f dir = GLutil_Vec3f_sub(cam.pos, cam.target);
+    dir = GLutil_Vec3f_normalize(dir);
+
+    GLutil_Vec3f right = GLutil_Vec3f_cross(cam.up, dir);
+    right = GLutil_Vec3f_normalize(right);
+
+    GLutil_Vec3f up = cam.up;
+
+    // from: https://github.com/lukeflima/Segundo-Trabalho/blob/master/Segundo-Trabalho/mygl.h 
+    GLutil_Mat4x4f lukeat = (GLutil_Mat4x4f) {
+        .data = {
+            right.x, right.y, right.z, 0,
+            up.x,    up.y,    up.z, 0,
+            dir.x,   dir.y,   dir.z,   0,
+            0,       0,       0,       1,
+        },
+    };
+
+    GLutil_Mat4x4f pos = (GLutil_Mat4x4f) {
+        .data = {
+            1.0f, 0.0f,  0.0f,  -cam.pos.x,
+            0.0f, 1.0f,  0.0f,  -cam.pos.y,
+            0.0f, 0.0f,  1.0f,  -cam.pos.z,
+            0.0f, 0.0f,  0.0f,   1.0f,
+        }
+    };
+
+
+    return Mat4x4f_mul(lukeat, pos);
+
+}
+
+GLutil_Mat4x4f GLutil_projection_matrix(GLutil_Camera cam, float aspectRatio)
+{
+    const float DEG2RAD = (float)M_PI / 180.0f;
+    float tangent = tanf(cam.fovX/2.0f * DEG2RAD);    // tangent of half fovX
+    return (GLutil_Mat4x4f) { 
+        .data = { 
+            1.0f/(aspectRatio*tangent), 0.0f,           0.0f,                     0.0f,
+            0.0f,                       1.0f /tangent,  0.0f,                     0.0f,
+            0.0f,                       0.0f,           -(cam.far + cam.near)/(cam.far-cam.near), -(2*cam.far*cam.near)/(cam.far-cam.near),
+            0.0f,                       0.0f,           -1.0f,                    0.0f,
+        }
+    };
+}
+
+/* @TODO: checar comentário na declaração da assinatura de projection_matrix
+GLutil_Mat4x4f GLutil_projection_matrix(GLutil_Camera cam)
+{
+    return GLutil_projection_matrix_(cam, (float)WINDOW_WIDTH / (float)WINDOW_HEIGHT);
+}
+*/
 
 /*******************************************************************************
  *                               3D MODEL OBJ                                  *
@@ -1113,9 +1232,9 @@ typedef struct {
 } VecFloats;
 
 
-ObjModel load_obj_file(const char* file_path)
+ObjData GLutil_load_obj_file(const char* file_path)
 {
-    ObjModel obj = {0};
+    ObjData obj = {0};
 
     Vertices verts = {0};
     carr_vec_init(&verts);
@@ -1125,6 +1244,7 @@ ObjModel load_obj_file(const char* file_path)
 
 
     CarrStringBuilder sb = carr_sb_from_file(file_path);
+    if (sb.data == NULL) exit(1);
     CarrStringView file = carr_sv_from_sb(sb);
 
     VecFloats vs = {0};  // temp vec for vertices coordinates
@@ -1291,11 +1411,12 @@ ObjModel load_obj_file(const char* file_path)
     obj.faces      = faces;
 
     default_shaders(&obj);
+    GLutil_load_obj_to_GPU(&obj);
     
     return obj;
 }
 
-void GLutil_load_obj_to_GPU(GLutil_ObjModel* obj)
+void GLutil_load_obj_to_GPU(GLutil_ObjData* obj)
 {
     // create GPU buffers for vertex and indexes data
     glGenVertexArrays(1, &obj->vao_id); // VAO => Stores Vertex Attributes Layout and overall configuration of other buffers
@@ -1332,17 +1453,26 @@ void GLutil_load_obj_to_GPU(GLutil_ObjModel* obj)
 
 }
 
+
+
 GLuint GLutil_load_texture(const char* texture_name)
 {
     GLuint texture_id;
     int img_width, img_height, n;
     unsigned char *data = stbi_load(texture_name, &img_width, &img_height, &n, 0);
-    glGenTextures(1, &texture_id);
-    glBindTexture(GL_TEXTURE_2D, texture_id);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    if (data == NULL)  {
+        PRINT_ERROR("stbi_load failed\n");
+        exit(1);
+    }
+
+
+    glGenTextures(1, &texture_id); GLUTIL_CHECK_GL_ERROR();
+    glBindTexture(GL_TEXTURE_2D, texture_id); GLUTIL_CHECK_GL_ERROR();
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT); GLUTIL_CHECK_GL_ERROR();  
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT); GLUTIL_CHECK_GL_ERROR();
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR); GLUTIL_CHECK_GL_ERROR();
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); GLUTIL_CHECK_GL_ERROR();
 
     // glActiveTexture(GL_TEXTURE0);
     glTexImage2D(
@@ -1350,12 +1480,70 @@ GLuint GLutil_load_texture(const char* texture_name)
         img_width, img_height,
         0, GL_RGB, GL_UNSIGNED_BYTE,
         data 
-    ); 
-    glGenerateMipmap(GL_TEXTURE_2D);
+    ); GLUTIL_CHECK_GL_ERROR();
+    glGenerateMipmap(GL_TEXTURE_2D); GLUTIL_CHECK_GL_ERROR();
 
     stbi_image_free(data);
 
     return texture_id;
+}
+
+GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj)
+{
+    return (GLutil_Model) {
+        .scale = 10000.0f,  // @TODO: encontrar valores mais razoáveis de escala padrão lol
+        .world_pos = { 0.0f, 0.0f, 0.0f },
+        .geometry = obj,
+        .texture_id = -1
+    };
+}
+
+
+void GLutil_render_model(GLutil* glutil, GLutil_Model* model)
+{
+    glUseProgram(model->geometry->shader_program); CHECK_GL_ERROR();
+    glBindVertexArray(model->geometry->vao_id); CHECK_GL_ERROR();
+
+    GLuint model_loc = glGetUniformLocation(model->geometry->shader_program, "model_mat");
+    CHECK_GL_ERROR();
+    glUniformMatrix3fv(model_loc, 1, GL_FALSE, GLutil_model_matrix(*glutil->camera).data);
+    CHECK_GL_ERROR();
+
+    GLuint view_loc = glGetUniformLocation(model->geometry->shader_program, "view_mat");
+    CHECK_GL_ERROR();
+    glUniformMatrix4fv(view_loc, 1, GL_TRUE, GLutil_view_matrix(*glutil->camera).data);
+    CHECK_GL_ERROR();
+
+    GLutil_Mat4x4f projection = GLutil_projection_matrix(*glutil->camera, glutil->winwidth / (float)glutil->winheight);
+    GLuint proj_loc = glGetUniformLocation(model->geometry->shader_program, "proj_mat");
+    CHECK_GL_ERROR();
+    glUniformMatrix4fv(proj_loc, 1, GL_TRUE, projection.data);
+    CHECK_GL_ERROR();
+
+    GLuint t_loc = glGetUniformLocation(model->geometry->shader_program, "t"); CHECK_GL_ERROR();
+    float t_secs = glutil->cur_t_nanos / 1000.0f / 1000.0f / 1000.0f;  // 1 sec = 10^9 nanosecs
+    glUniform1f(t_loc, t_secs); CHECK_GL_ERROR();
+
+    GLuint scale_loc = glGetUniformLocation(model->geometry->shader_program, "scale"); CHECK_GL_ERROR();
+    glUniform1f(scale_loc, model->scale); CHECK_GL_ERROR();
+
+    const float fs[3] = { model->world_pos.x, model->world_pos.y, model->world_pos.z };
+    GLuint wpos_loc = glGetUniformLocation(model->geometry->shader_program, "world_pos"); CHECK_GL_ERROR();
+    glUniform3fv(wpos_loc, 1, fs); CHECK_GL_ERROR();
+
+    GLuint texture_loc = glGetUniformLocation(model->geometry->shader_program, "the_texture"); CHECK_GL_ERROR();
+    glUniform1i(texture_loc, 0); CHECK_GL_ERROR();
+    
+    GLuint has_texture_loc = glGetUniformLocation(model->geometry->shader_program, "has_texture"); CHECK_GL_ERROR();
+    if ( model->texture_id == (GLuint)-1 ) {
+        glUniform1i(has_texture_loc, false); CHECK_GL_ERROR();
+    } else {
+        glUniform1i(has_texture_loc, true); CHECK_GL_ERROR();
+        glBindTexture(GL_TEXTURE_2D, model->texture_id); CHECK_GL_ERROR();
+    }
+
+    glDrawElements(GL_TRIANGLES, model->geometry->faces.len, GL_UNSIGNED_INT, 0); CHECK_GL_ERROR();
+    // printf("[DRAW] Error: %s\n", glErrorNames[glGetError()]);
 }
 
 

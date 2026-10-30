@@ -87,7 +87,7 @@ void particle_check_collisions(uint64_t dt, int* ps, int idx, int ps_size)
         Particle* other = &particles[ps[i]];
 
         // norm =>   self <---------- other
-        Vec2f norm  = GLutil_Vec2f_subtract(self->pos, other->pos);
+        Vec2f norm  = GLutil_Vec2f_sub(self->pos, other->pos);
         size_t dist = GLutil_Vec2f_length(norm);
 
         if (dist > self->rad + other->rad) continue;
@@ -134,7 +134,7 @@ void particle_check_collisions(uint64_t dt, int* ps, int idx, int ps_size)
         shift.y *= factor;
 
         self->pos  = GLutil_Vec2f_add(self->pos, shift);
-        other->pos = GLutil_Vec2f_subtract(other->pos, shift);
+        other->pos = GLutil_Vec2f_sub(other->pos, shift);
     }
 }
 

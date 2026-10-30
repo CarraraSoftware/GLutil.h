@@ -38,7 +38,7 @@ void particle_check_collisions(Particle* self, uint64_t dt, int idx)
         // o centro da partícula 'self'. esse vetor é utilizado pra definir
         // a direção Normal da colisão. essa direção é a única direção em que
         // de fato há troca de momentum.
-        Vec2f norm  = Vec2f_subtract(self->pos, other->pos);
+        Vec2f norm  = Vec2f_sub(self->pos, other->pos);
         size_t dist = Vec2f_length(norm);
 
         // se não há intersecção entre as partículas, ignorar
@@ -97,7 +97,7 @@ void particle_check_collisions(Particle* self, uint64_t dt, int idx)
         shift.y *= factor;
 
         self->pos  = Vec2f_add(self->pos, shift);
-        other->pos = Vec2f_subtract(other->pos, shift);
+        other->pos = Vec2f_sub(other->pos, shift);
     }
 }
 
