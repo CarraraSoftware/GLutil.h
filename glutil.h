@@ -61,6 +61,13 @@
 
 
 
+/*******************************************************************************
+ *                                                                             *
+ *                        NO PREFIX DEFINITIONS                                *
+ *                                                                             *
+ ******************************************************************************/
+
+
 #ifndef GLUTIL_FORCE_PREFIX
 
 #define MAP    GLUTIL_MAP
@@ -144,6 +151,7 @@
 #define load_obj_to_GPU  GLutil_load_obj_to_GPU
 #define load_texture     GLutil_load_texture
 #define model_from_obj   GLutil_model_from_obj
+#define make_model       GLutil_make_model
 #define render_model     GLutil_render_model
 
 #endif // GLUTIL_INCLUDE_PREFIX
@@ -157,6 +165,7 @@
 #define GLUTIL_PRINT_ERROR(msg) fprintf(stderr, "%d:%s:%s ERROR: %s", __LINE__, __FILE__, __FUNCTION__, msg)
 #define GLUTIL_CHECK_GL_ERROR() GLutil_check_gl_error_(__LINE__, __FILE__, __FUNCTION__)
 
+/*
 #define ALL_INPUT_MASKS ( \
         KeyPressMask       | KeyReleaseMask         | ButtonPressMask          \
       | ButtonReleaseMask  | EnterWindowMask        | LeaveWindowMask          \
@@ -167,7 +176,24 @@
       | ResizeRedirectMask | SubstructureNotifyMask | SubstructureRedirectMask \
       | FocusChangeMask    | PropertyChangeMask     | ColormapChangeMask       \
       | OwnerGrabButtonMask )
+*/
 
+#define ALL_INPUT_MASKS ( \
+        KeyPressMask       | KeyReleaseMask         | ButtonPressMask          \
+      | ButtonReleaseMask  | EnterWindowMask        | LeaveWindowMask          \
+      | PointerMotionMask  | Button1MotionMask        \
+      | Button2MotionMask  | Button3MotionMask      | Button4MotionMask        \
+      | Button5MotionMask  | ButtonMotionMask       | KeymapStateMask          \
+      | ExposureMask       | VisibilityChangeMask   | StructureNotifyMask      \
+      | ResizeRedirectMask | SubstructureNotifyMask | SubstructureRedirectMask \
+      | FocusChangeMask    | PropertyChangeMask     | ColormapChangeMask       \
+      | OwnerGrabButtonMask )
+
+/*******************************************************************************
+ *                                                                             *
+ *                        TYPE DEFINITIONS                                     *
+ *                                                                             *
+ ******************************************************************************/
 
 typedef struct GLutil_Camera GLutil_Camera;
 
@@ -355,6 +381,13 @@ GLutil_Camera GLUTIL_DEFAULT_CAMERA = {
 
 
 
+
+/*******************************************************************************
+ *                                                                             *
+ *                    FUNCTION FORWARD DECLARATIONS                            *
+ *                                                                             *
+ ******************************************************************************/
+
 void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h);            // inicializa Display, Window e o OpenGLContext. e mais alguns estados internos
 void GLutil_destroy(GLutil* glutil);                                         // desaloca e fecha todos os recursos alocados por GLutil.h
 
@@ -417,6 +450,8 @@ void GLutil_default_shaders(GLutil_ObjData* obj);
 GLutil_ObjData GLutil_load_obj_file(const char* file_path);
 void GLutil_load_obj_to_GPU(GLutil_ObjData* obj);
 
+GLutil_Model GLutil_make_model();
+GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
 void GLutil_render_model(GLutil* glutil, GLutil_Model* model);
 
 GLuint GLutil_load_texture(const char* texture_name);
@@ -690,11 +725,18 @@ void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h)
     GLutil_make_window(glutil, w, h);
     GLutil_make_context(glutil);
 
+#ifndef GLUTIL_NO_GL_LEGACY // @NOTE: o debugger renderdoc não suporta essas funções legadas, por isso esse macro
     // permite usar a api legado do OpenGL, mas não afeta o uso de shaders
     glMatrixMode( GL_PROJECTION );
     glLoadIdentity();
     GLutil_ortho2D(0, w, 0, h); // coloca origem no topo esquerda
-    glEnable(GL_DEPTH_TEST);
+#endif
+
+    glEnable(GL_DEPTH_TEST); // z-buffer
+    
+    // fica um pouco mais ~smooth~, menos pixelado
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     glutil->camera = &GLUTIL_DEFAULT_CAMERA;
 
@@ -1488,14 +1530,23 @@ GLuint GLutil_load_texture(const char* texture_name)
     return texture_id;
 }
 
-GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj)
+GLutil_Model GLutil_make_model()
 {
-    return (GLutil_Model) {
+    GLutil_Model m = (GLutil_Model) {
         .scale = 10000.0f,  // @TODO: encontrar valores mais razoáveis de escala padrão lol
         .world_pos = { 0.0f, 0.0f, 0.0f },
-        .geometry = obj,
-        .texture_id = -1
+        .geometry = NULL,
+        .texture_id = -1 // -1 == no texture
     };
+
+    return m;
+}
+
+GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj)
+{
+    GLutil_Model m = GLutil_make_model();
+    m.geometry = obj;
+    return m;
 }
 
 
