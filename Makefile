@@ -1,5 +1,8 @@
 OUT_DIR=bin/
 LINKER_FLAGS=-lX11 -lGL -lm
+F_FLAGS=-flto=auto -fno-fat-lto-objects -Wall -Wextra -pedantic -Wno-unused-parameter -Wstrict-prototypes -std=gnu99 -Wshadow -Wconversion -Wvla -Wdouble-promotion -Wmissing-noreturn -Wmissing-format-attribute -Wmissing-prototypes -Wno-unused-function -fsigned-char -fstack-protector-strong -Wno-conversion -fno-common -Wno-unused-result -Wimplicit-fallthrough -fdiagnostics-color=auto -Wno-free-nonheap-object
+
+
 dvd:
 	gcc -o $(OUT_DIR)dvd examples/00-circle_dvd.c $(LINKER_FLAGS)
 	$(OUT_DIR)dvd

@@ -19,6 +19,30 @@ uniform mat4 proj_mat;
 
 const float PI = 3.14159265359;
 
+vec3 rotate(vec3 pos)
+{
+    float delta = t * PI;
+
+    float x = cos( t ) * pos.x - sin( t ) * pos.z;
+    float y = pos.y ;
+    float z = sin( t ) * pos.x + cos( t ) * pos.z;
+
+    float freq = 2.0f;
+    float rot_y =   cos( t * freq ) * y + sin( t * freq ) * z;
+    float rot_z = - sin( t * freq ) * y + cos( t * freq ) * z;
+
+    y = rot_y;
+    z = rot_z;
+
+    float rot_x = cos( t ) * x - sin( t ) * y;
+          rot_y = sin( t ) * x + cos( t ) * y;
+
+    x = rot_x;
+    y = rot_y;
+
+    return vec3(x, y, z);
+}
+
 void main() {
     // gl_Position = vec4(pos.x, pos.y, pos.z, 1.0);
     // gl_Position = vec4(cos(t) * pos.x - sin(t) * pos.y , pos.y * cos(t) + sin(t)* pos.x, pos.z, 1.0);
@@ -37,27 +61,7 @@ void main() {
     float y = new_pos.y;
     float z = new_pos.z;
 
-
-    float delta = t * PI;
-
-    x = cos( t ) * new_pos.x - sin( t ) * new_pos.z;
-    y = new_pos.y ;
-    z = sin( t ) * new_pos.x + cos( t ) * new_pos.z;
-
-    float freq = 2.0f;
-    float rot_y =   cos( t * freq ) * y + sin( t * freq ) * z;
-    float rot_z = - sin( t * freq ) * y + cos( t * freq ) * z;
-
-    y = rot_y;
-    z = rot_z;
-
-    /*
-    float rot_x = cos( t ) * x - sin( t ) * y;
-          rot_y = sin( t ) * x + cos( t ) * y;
-
-    x = rot_x;
-    y = rot_y;
-    */
+    // rotate();
 
     float w = 1.0f;
     vec4 pos4 = vec4(x, y, z, w);
