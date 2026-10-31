@@ -1,4 +1,6 @@
 #include <X11/X.h>
+
+
 #define GLUTIL_IMPLEMENTATION // inclui as implementações de todas as funções
 #include "../../glutil.h"
 
@@ -19,6 +21,8 @@
 #define DOWN_ARROW  116
 #define UP_ARROW    111
 #define STEP_SIZE 2.0f
+
+
 
 
 Model CUBES[CUBES_COUNT] = {0};
@@ -52,8 +56,67 @@ void init_cubes(ObjData* obj)
 }
 
 
-void update_camera(GLutil* glutil, XEvent event)
+Vec3f handle_mouse(GLutil* glutil, XEvent event)
 {
+    Vec3f campos = glutil->camera->pos;
+
+    static bool dragging = false;
+    static int last_x = -1;
+    static int last_y = -1;
+
+
+    switch (event.type) {
+        case ButtonRelease: {
+            dragging = false;
+            printf("Mouse Event: [RELEASED]: %d, %d\n", event.xbutton.x, event.xbutton.y);
+        }; break;
+        case ButtonPress: {
+            dragging = true;
+            last_x = event.xbutton.x;
+            last_y = event.xbutton.y;
+            
+            printf("Mouse Event: [PRESSED]: %d, %d\n", event.xbutton.x, event.xbutton.y);
+        }; break;
+
+        case MotionNotify: {
+            if ( dragging ) {
+                int delta_x = event.xmotion.x - last_x;
+                int delta_y = event.xmotion.y - last_y;
+
+                float cam_dist = Vec3f_length(Vec3f_sub(glutil->camera->pos, glutil->camera->target));
+
+                float angle, new_x, new_y, new_z;
+
+                // rotate around y axis
+                angle = 0.1f * atan2f( delta_x, cam_dist );
+                new_x = campos.x * cosf(angle) - campos.z * sinf(angle);
+                new_z = campos.x * sinf(angle) + campos.z * cosf(angle);
+                campos.x = new_x;
+                campos.z = new_z;
+
+                // rotate around x axis
+                angle = 0.1f * atan2f( delta_y, cam_dist );
+                new_y = campos.z * sinf(angle) + campos.y * cosf(angle);
+                new_z = campos.z * cosf(angle) - campos.y * sinf(angle);
+                campos.y = new_y;
+                campos.z = new_z;
+
+                printf("Mouse Event: Event MotionNotify: x:%d, y:%d, ang:%f\n", delta_x, delta_y, angle);
+                last_x = event.xmotion.x;
+                last_y = event.xmotion.y;
+            }
+        }; break;
+
+
+
+    }
+
+    return campos;
+}
+
+void handle_keypress(GLutil* glutil, XEvent event)
+{
+    return;
     float angle = 0.01f;
     float delta_z = 0.5f;
     Vec3f campos = glutil->camera->pos;
@@ -73,13 +136,6 @@ void update_camera(GLutil* glutil, XEvent event)
         Vec3f step = Vec3f_scale(tang, STEP_SIZE);
         campos = Vec3f_add(campos, step);
 
-        /* weird rotation
-        float new_x = campos.x * cosf(angle) - campos.z * sinf(angle);
-        float new_z = campos.x * sinf(angle) + campos.z * cosf(angle);
-
-        campos.x = new_x;
-        campos.z = new_z;
-        */
     }; break;
     case LEFT_ARROW: {
         Vec3f rad = Vec3f_sub(camtrg, campos);
@@ -93,13 +149,6 @@ void update_camera(GLutil* glutil, XEvent event)
 
         Vec3f step = Vec3f_scale(tang, STEP_SIZE);
         campos = Vec3f_add(campos, step);
-        /*
-        float new_x = campos.x * cosf(-angle) - campos.z * sinf(-angle);
-        float new_z = campos.x * sinf(-angle) + campos.z * cosf(-angle);
-
-        campos.x = new_x;
-        campos.z = new_z;
-        */
     }; break;
     case UP_ARROW: {
         Vec3f dir = Vec3f_sub(camtrg, campos);
@@ -138,7 +187,12 @@ int main(void) {
             XEvent event;
             XNextEvent(glutil.display, &event);
             if (event.type == KeyPress)
-                update_camera(&glutil, event);
+                handle_keypress(&glutil, event);
+            else if (event.type == MotionNotify || event.type == ButtonPress || event.type == ButtonRelease)
+            {
+                Vec3f newcam = handle_mouse(&glutil, event);
+                glutil.camera->pos = newcam;
+            }
         }
 
         uint64_t dt = begin_frame(&glutil);
