@@ -1,6 +1,6 @@
 /* 
 * Most of the OpenGl initialization code was taken from:
-* https://github.com/ColleagueRiley/OpenGL-Context-Creation
+* @FROM: https://github.com/ColleagueRiley/OpenGL-Context-Creation
 * made by the author of
 * https://github.com/ColleagueRiley/RGFW 
 * 
@@ -89,6 +89,9 @@
 #define Mat4f    GLutil_Mat4f
 
 
+#define Camera GLutil_Camera
+
+
 #define Vertex   GLutil_Vertex
 #define Vertices GLutil_Vertices
 #define Faces    GLutil_Faces
@@ -106,25 +109,34 @@
 
 #define wireframe_mode GLutil_wireframe_mode
 
-#define Vec2f_add      GLutil_Vec2f_add
-#define Vec2f_sub      GLutil_Vec2f_sub
-#define Vec2f_sqlength GLutil_Vec2f_sqlength
-#define Vec2f_length   GLutil_Vec2f_length
-#define Vec2f_rotccw   GLutil_Vec2f_rotccw
-#define Vec2f_rotcw    GLutil_Vec2f_rotcw
-#define Vec2f_dot GLutil_Vec2f_dot
+#define Vec2f_add          GLutil_Vec2f_add
+#define Vec2f_sub          GLutil_Vec2f_sub
+#define Vec2f_sqlength     GLutil_Vec2f_sqlength
+#define Vec2f_length       GLutil_Vec2f_length
+#define Vec2f_rotccw       GLutil_Vec2f_rotccw
+#define Vec2f_rotcw        GLutil_Vec2f_rotcw
+#define Vec2f_dot          GLutil_Vec2f_dot
 #define Vec2f_apply_mat2x2 GLutil_Vec2f_apply_mat2x2
-#define Vec2f_scale GLutil_Vec2f_scale
+#define Vec2f_scale        GLutil_Vec2f_scale
 
-#define Vec3f_add GLutil_Vec3f_add
-#define Vec3f_sub GLutil_Vec3f_sub
-#define Vec3f_sqlength GLutil_Vec3f_sqlength
-#define Vec3f_length GLutil_Vec3f_length
-#define Vec3f_div GLutil_Vec3f_div
-#define Vec3f_normalize GLutil_Vec3f_normalize
-#define Vec3f_scale GLutil_Vec3f_scale
-#define Vec3f_dot GLutil_Vec3f_dot
-#define Vec3f_cross GLutil_Vec3f_cross
+#define Vec3f_add                GLutil_Vec3f_add
+#define Vec3f_sub                GLutil_Vec3f_sub
+#define Vec3f_sqlength           GLutil_Vec3f_sqlength
+#define Vec3f_length             GLutil_Vec3f_length
+#define Vec3f_div                GLutil_Vec3f_div
+#define Vec3f_normalize          GLutil_Vec3f_normalize
+#define Vec3f_scale              GLutil_Vec3f_scale
+#define Vec3f_dot                GLutil_Vec3f_dot
+#define Vec3f_cross              GLutil_Vec3f_cross
+#define Vec3f_angle_between      GLutil_Vec3f_angle_between
+#define Vec3f_apply_mat3x3       GLutil_Vec3f_apply_mat3x3
+#define Vec3f_rotate_x           GLutil_Vec3f_rotate_x
+#define Vec3f_rotate_y           GLutil_Vec3f_rotate_y
+#define Vec3f_rotate_z           GLutil_Vec3f_rotate_z
+#define Vec3f_rotate_around_axis GLutil_Vec3f_rotate_around_axis
+
+#define Vec4f_dot          GLutil_Vec4f_dot
+#define Vec4f_apply_mat4x4 GLutil_Vec4f_apply_mat4x4
 
 #define Mat2x2f_mul GLutil_Mat2x2f_mul
 #define Mat3x3f_mul GLutil_Mat3x3f_mul
@@ -365,12 +377,12 @@ typedef struct {
 } GLutil_Model;
 
 
-#define GLUTIL_DEFAULT_CAM_FOV  60.0f
+#define GLUTIL_DEFAULT_CAM_FOV  90.0f
 #define GLUTIL_DEFAULT_CAM_NEAR 0.1f
-#define GLUTIL_DEFAULT_CAM_FAR  100.0f
+#define GLUTIL_DEFAULT_CAM_FAR  1000.0f
 
 GLutil_Camera GLUTIL_DEFAULT_CAMERA = {
-    .pos =    { .x = 0.0f, .y = 0.0f, .z = 3.0f },
+    .pos =    { .x = 0.0f, .y = 0.0f, .z = 30.0f },
     .target = { .x = 0.0f, .y = 0.0f, .z = 0.0f },
     .up =     { .x = 0.0f, .y = 1.0f, .z = 0.0f },
 
@@ -418,6 +430,15 @@ GLutil_Vec3f GLutil_Vec3f_normalize(GLutil_Vec3f v);
 GLutil_Vec3f GLutil_Vec3f_scale(GLutil_Vec3f v, float s);
 float GLutil_Vec3f_dot(GLutil_Vec3f a, GLutil_Vec3f b);
 GLutil_Vec3f GLutil_Vec3f_cross(GLutil_Vec3f a, GLutil_Vec3f b);
+float GLutil_Vec3f_angle_between(GLutil_Vec3f a, GLutil_Vec3f b);
+GLutil_Vec3f GLutil_Vec3f_apply_mat3x3(GLutil_Vec3f v, Mat3x3f A);
+GLutil_Vec3f GLutil_Vec3f_rotate_x(GLutil_Vec3f v, float angle);
+GLutil_Vec3f GLutil_Vec3f_rotate_y(GLutil_Vec3f v, float angle);
+GLutil_Vec3f GLutil_Vec3f_rotate_z(GLutil_Vec3f v, float angle);
+GLutil_Vec3f GLutil_Vec3f_rotate_around_axis(GLutil_Vec3f v, GLutil_Vec3f R, float angle);
+
+GLutil_Vec4f GLutil_Vec4f_apply_mat4x4(GLutil_Vec4f v, Mat4x4f A);
+float GLutil_Vec4f_dot(GLutil_Vec4f a, GLutil_Vec4f b);
 
 GLutil_Mat2x2f GLutil_Mat2x2f_mul(GLutil_Mat2x2f A, GLutil_Mat2x2f B);
 GLutil_Mat3x3f GLutil_Mat3x3f_mul(GLutil_Mat3x3f A, GLutil_Mat3x3f B);
@@ -471,6 +492,7 @@ GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
 
 #ifdef GLUTIL_IMPLEMENTATION
 
+#define GLUTIL_DIV_EPS 0.000001
 
 static const char* DEFAULT_VERT_SHADER_PATH = "./shaders/default_vs.glsl";
 static const char* DEFAULT_FRAG_SHADER_PATH = "./shaders/default_fs.glsl";
@@ -577,7 +599,7 @@ GLUTIL_GL_FUNCTIONS_TO_LOAD
 
 /*******************************************************************************
 *  INICIALIZAÇÃO DO OPENGL                                                    *
-*  (from: https://github.com/ColleagueRiley/OpenGL-Context-Creation)          *
+*  (@FROM: https://github.com/ColleagueRiley/OpenGL-Context-Creation)          *
 ******************************************************************************/ 
 
 
@@ -968,9 +990,10 @@ float GLutil_Vec3f_length(GLutil_Vec3f v)
     return sqrt(GLutil_Vec3f_sqlength(v));
 }
 
+
 GLutil_Vec3f GLutil_Vec3f_div(GLutil_Vec3f v, float d)
 {
-    assert(d != 0);
+    if (d < GLUTIL_DIV_EPS) return (GLutil_Vec3f){ 0, 0, 0 };
     return (GLutil_Vec3f) {
         .x = v.x / d,
         .y = v.y / d,
@@ -1008,6 +1031,112 @@ GLutil_Vec3f GLutil_Vec3f_cross(GLutil_Vec3f a, GLutil_Vec3f b)
     };
 }
 
+float GLutil_Vec3f_angle_between(GLutil_Vec3f a, GLutil_Vec3f b)
+{
+    // AºB = |A| * |B| * cos(theta)
+    // cos(theta) = AºB / |A|*|B|
+    // theta = arccos(AºB / |A|*|B|)
+    float la = Vec3f_length(a); // |A|
+    float lb = Vec3f_length(b); // |B|
+    float d = Vec3f_dot(a, b);  // AºB
+    float cosine = d / (la*lb); // AºB / |A|*|B|
+    return acosf(cosine);       // arccos(AºB / |A|*|B|)
+}
+
+GLutil_Vec3f GLutil_Vec3f_apply_mat3x3(GLutil_Vec3f v, Mat3x3f A)
+{
+    //  | A00  A01 | * | vx | =>  | dot( {A00, A01}, v ) |
+    //  | A10  A11 |   | vy |     | dot( {A10, A11}, v ) |
+    return (GLutil_Vec3f) {
+        .x = GLutil_Vec3f_dot(A.rows[0], v),
+        .y = GLutil_Vec3f_dot(A.rows[1], v),
+        .z = GLutil_Vec3f_dot(A.rows[2], v),
+    };
+}
+
+GLutil_Vec3f GLutil_Vec3f_rotate_around_axis(GLutil_Vec3f v, GLutil_Vec3f R, float angle)
+{
+    float c = cosf(angle);
+    float s = sinf(angle);
+
+    // @FROM: https://learnopengl.com/Getting-started/Transformations
+    Mat4x4f m;
+    m._11 = R.x*R.x*(1-c) + c;
+    m._12 = R.x*R.y*(1-c) - R.z*s;
+    m._13 = R.x*R.z*(1-c) + R.y*s;
+    m._14 = 0.0f;
+    m._21 = R.y*R.x*(1-c) + R.z*s;
+    m._22 = R.y*R.y*(1-c) + c;
+    m._23 = R.y*R.z*(1-c) - R.x*s;
+    m._24 = 0.0f;
+    m._31 = R.z*R.x*(1-c) - R.y*s;
+    m._32 = R.z*R.y*(1-c) + R.x*s;
+    m._33 = R.z*R.z*(1-c) + c;
+    m._44 = 0.0f;
+    m._41 = 0.0f;
+    m._42 = 0.0f;
+    m._43 = 0.0f;
+    m._44 = 1.0f;
+
+    GLutil_Vec4f v4 = { .x = v.x, .y = v.y, .z = v.z, .w = 1.0f };
+    v4 = GLutil_Vec4f_apply_mat4x4(v4, m);
+    return (Vec3f) { .x = v4.x, .y = v4.y, .z = v4.z };
+}
+
+
+GLutil_Vec3f GLutil_Vec3f_rotate_x(GLutil_Vec3f v, float angle)
+{
+    float cosine = cosf(angle);
+    float sine = sinf(angle);
+    GLutil_Mat3x3f rot_x = {
+            1.0f, 0.0,     0.0,
+            0.0f, cosine, -sine,
+            0.0f, sine,    cosine,
+    };
+    return GLutil_Vec3f_apply_mat3x3(v, rot_x);
+}
+
+GLutil_Vec3f GLutil_Vec3f_rotate_y(GLutil_Vec3f v, float angle)
+{
+    float cosine = cosf(angle);
+    float sine = sinf(angle);
+    GLutil_Mat3x3f rot_y = {
+       cosine, 0.0f,  sine,
+       0.0,    1.0f,  0.0,
+      -sine,   0.0f,  cosine, 
+    };
+    return GLutil_Vec3f_apply_mat3x3(v, rot_y);
+}
+
+GLutil_Vec3f GLutil_Vec3f_rotate_z(GLutil_Vec3f v, float angle)
+{
+    float cosine = cosf(angle);
+    float sine = sinf(angle);
+    GLutil_Mat3x3f rot_z = {
+        cosine, -sine,   0.0f, 
+        sine,    cosine, 0.0f, 
+        0.0,     0.0,    1.0f, 
+    };
+    return GLutil_Vec3f_apply_mat3x3(v, rot_z);
+}
+
+
+
+float GLutil_Vec4f_dot(GLutil_Vec4f a, GLutil_Vec4f b)
+{
+    return a.x * b.x  + a.y * b.y + a.z * b.z  + a.w * b.w;
+}
+
+GLutil_Vec4f GLutil_Vec4f_apply_mat4x4(GLutil_Vec4f v, Mat4x4f A)
+{
+    return (GLutil_Vec4f) {
+        .x = GLutil_Vec4f_dot(A.rows[0], v),
+        .y = GLutil_Vec4f_dot(A.rows[1], v),
+        .z = GLutil_Vec4f_dot(A.rows[2], v),
+        .w = GLutil_Vec4f_dot(A.rows[3], v),
+    };
+}
+
 
 GLutil_Mat2x2f GLutil_Mat2x2f_mul(GLutil_Mat2x2f A, GLutil_Mat2x2f B)
 {
@@ -1041,7 +1170,7 @@ GLutil_Mat3x3f GLutil_Mat3x3f_mul(GLutil_Mat3x3f A, GLutil_Mat3x3f B)
 
 GLutil_Mat4x4f GLutil_Mat4x4f_mul(GLutil_Mat4x4f A, GLutil_Mat4x4f B)
 {
-    // from: https://github.com/tsoding/la/blob/master/la.h
+    // @FROM: https://github.com/tsoding/la/blob/master/la.h
     GLutil_Mat4x4f m;
     m._11 = A._11*B._11 + A._12*B._21 + A._13*B._31 + A._14*B._41;
     m._12 = A._11*B._12 + A._12*B._22 + A._13*B._32 + A._14*B._42;
@@ -1208,13 +1337,14 @@ GLutil_Mat4x4f GLutil_view_matrix(GLutil_Camera cam)
     GLutil_Vec3f right = GLutil_Vec3f_cross(cam.up, dir);
     right = GLutil_Vec3f_normalize(right);
 
-    GLutil_Vec3f up = cam.up;
+    GLutil_Vec3f up = GLutil_Vec3f_cross(dir, right);
+    up = GLutil_Vec3f_normalize(up);
 
-    // from: https://github.com/lukeflima/Segundo-Trabalho/blob/master/Segundo-Trabalho/mygl.h 
+    // @FROM: https://github.com/lukeflima/Segundo-Trabalho/blob/master/Segundo-Trabalho/mygl.h 
     GLutil_Mat4x4f lukeat = (GLutil_Mat4x4f) {
         .data = {
             right.x, right.y, right.z, 0,
-            up.x,    up.y,    up.z, 0,
+            up.x,    up.y,    up.z,    0,
             dir.x,   dir.y,   dir.z,   0,
             0,       0,       0,       1,
         },
@@ -1597,6 +1727,4 @@ void GLutil_render_model(GLutil* glutil, GLutil_Model* model)
     // printf("[DRAW] Error: %s\n", glErrorNames[glGetError()]);
 }
 
-
 #endif // GLUTIL_H_
-

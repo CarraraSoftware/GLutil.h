@@ -22,7 +22,7 @@
 #define UP_ARROW    111
 #define STEP_SIZE 2.0f
 
-
+#define RAD2DEG(angle) ((angle) * 180.0f / M_PI)
 
 
 Model CUBES[CUBES_COUNT] = {0};
@@ -55,10 +55,9 @@ void init_cubes(ObjData* obj)
     }
 }
 
-
-Vec3f handle_mouse(GLutil* glutil, XEvent event)
+Camera handle_mouse(GLutil* glutil, XEvent event)
 {
-    Vec3f campos = glutil->camera->pos;
+    Camera out = *glutil->camera;
 
     static bool dragging = false;
     static int last_x = -1;
@@ -80,76 +79,55 @@ Vec3f handle_mouse(GLutil* glutil, XEvent event)
 
         case MotionNotify: {
             if ( dragging ) {
-                int delta_x = event.xmotion.x - last_x;
-                int delta_y = event.xmotion.y - last_y;
+                int delta_x =  event.xmotion.x - last_x;
+                int delta_y = -event.xmotion.y + last_y;
+
+                GLutil_Vec3f dir = GLutil_Vec3f_sub(out.pos, out.target);
+                dir = GLutil_Vec3f_normalize(dir);
+
+                GLutil_Vec3f right = GLutil_Vec3f_cross(out.up, dir);
+                right = GLutil_Vec3f_normalize(right);
+
+                GLutil_Vec3f up = GLutil_Vec3f_cross(dir, right);
+                up = GLutil_Vec3f_normalize(up);
 
                 float cam_dist = Vec3f_length(Vec3f_sub(glutil->camera->pos, glutil->camera->target));
 
-                float angle, new_x, new_y, new_z;
+                Vec3f rotated_x = out.pos;
+                Vec3f rotated_y = out.pos;
 
-                // rotate around y axis
-                angle = 0.1f * atan2f( delta_x, cam_dist );
-                new_x = campos.x * cosf(angle) - campos.z * sinf(angle);
-                new_z = campos.x * sinf(angle) + campos.z * cosf(angle);
-                campos.x = new_x;
-                campos.z = new_z;
+                // @TODO: aparentemente quando a câmera fica alinhada com o eixo vertical
+                //        isso causa um "lookAt flip". pesquisar de quais outras formas
+                //        costumam contornar essa situação além de simplesmente ignorar
+                //        a rotação caso a câmera esteja muito perto do eixo.
+                float zenith = fabs(RAD2DEG(Vec3f_angle_between(dir, out.up)));
+                if ( 1.0f < zenith && zenith < 180.0f ) {
+                    float theta = 0.1 * atan2f( delta_y, cam_dist );
+                    rotated_x = Vec3f_rotate_around_axis(rotated_x, right, theta);
+                    rotated_y = rotated_x;
+                }
+                float phi = -0.1 * atan2f( delta_x, cam_dist );
+                rotated_y = Vec3f_rotate_around_axis(rotated_y, up, phi);
+                out.pos = rotated_y;
 
-                // rotate around x axis
-                angle = 0.1f * atan2f( delta_y, cam_dist );
-                new_y = campos.z * sinf(angle) + campos.y * cosf(angle);
-                new_z = campos.z * cosf(angle) - campos.y * sinf(angle);
-                campos.y = new_y;
-                campos.z = new_z;
-
-                printf("Mouse Event: Event MotionNotify: x:%d, y:%d, ang:%f\n", delta_x, delta_y, angle);
                 last_x = event.xmotion.x;
                 last_y = event.xmotion.y;
             }
         }; break;
-
-
-
     }
 
-    return campos;
+    return out;
 }
 
 void handle_keypress(GLutil* glutil, XEvent event)
 {
-    return;
     float angle = 0.01f;
     float delta_z = 0.5f;
     Vec3f campos = glutil->camera->pos;
     Vec3f camtrg = glutil->camera->target;
     switch (event.xkey.keycode) {
-    case RIGHT_ARROW: {
-
-        Vec3f rad = Vec3f_sub(camtrg, campos);
-        rad = Vec3f_normalize(rad);
-
-        Vec3f tang = (Vec3f) {
-            .x =  -rad.z,
-            .y =  0,
-            .z =  rad.x,
-        };
-
-        Vec3f step = Vec3f_scale(tang, STEP_SIZE);
-        campos = Vec3f_add(campos, step);
-
-    }; break;
-    case LEFT_ARROW: {
-        Vec3f rad = Vec3f_sub(camtrg, campos);
-        rad = Vec3f_normalize(rad);
-
-        Vec3f tang = (Vec3f) {
-            .x =  rad.z,
-            .y =  0,
-            .z =  -rad.x,
-        };
-
-        Vec3f step = Vec3f_scale(tang, STEP_SIZE);
-        campos = Vec3f_add(campos, step);
-    }; break;
+    case RIGHT_ARROW: { }; break;
+    case LEFT_ARROW: { }; break;
     case UP_ARROW: {
         Vec3f dir = Vec3f_sub(camtrg, campos);
         dir = Vec3f_normalize(dir);
@@ -174,8 +152,10 @@ int main(void) {
     init(&glutil, WINDOW_WIDTH, WINDOW_HEIGHT);
     set_target_fps(&glutil, 999999.0f);
     srand(get_time_nanos());
+    glutil.camera->pos.x = 00.0f;
+    glutil.camera->pos.y = 50.0f;
     glutil.camera->pos.z = 50.0f;
-    glutil.camera->fovX = 120.0f;
+    glutil.camera->fovX = 90.0f;
 
     ObjData obj = GLutil_load_obj_file(OBJ_PATH);
     init_cubes(&obj);
@@ -190,8 +170,8 @@ int main(void) {
                 handle_keypress(&glutil, event);
             else if (event.type == MotionNotify || event.type == ButtonPress || event.type == ButtonRelease)
             {
-                Vec3f newcam = handle_mouse(&glutil, event);
-                glutil.camera->pos = newcam;
+                Camera newcam = handle_mouse(&glutil, event);
+                glutil.camera->pos = newcam.pos;
             }
         }
 

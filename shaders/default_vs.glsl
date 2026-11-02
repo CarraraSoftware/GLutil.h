@@ -44,15 +44,8 @@ vec3 rotate(vec3 pos)
 }
 
 void main() {
-    // gl_Position = vec4(pos.x, pos.y, pos.z, 1.0);
-    // gl_Position = vec4(cos(t) * pos.x - sin(t) * pos.y , pos.y * cos(t) + sin(t)* pos.x, pos.z, 1.0);
-
     vec3 pos1 = scale * pos;
     pos1 = world_pos + pos1;
-    /*
-    vec3 pos1 = vec3(scale*pos.x, scale*pos.y, scale*pos.z);
-    pos1 = vec3(world_pos.x + pos1.x, world_pos.y + pos1.y, world_pos.z + pos1.z);
-     */
 
     vec3 new_pos = model_mat * pos1;
     // vec3 new_pos = pos1;
@@ -70,7 +63,6 @@ void main() {
 
 
     gl_Position = pos4;
-    // gl_Position = vec4(pos.x, pos.y, pos.z, 20.0);
     vs_pos = gl_Position;
     vs_color = color;
     vs_texture_pos = tex_pos;
