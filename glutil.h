@@ -90,7 +90,8 @@
 #define Mat4f    GLutil_Mat4f
 
 
-#define Camera GLutil_Camera
+#define Camera    GLutil_Camera
+#define _3DBasis  GLutil_3DBasis
 
 #define Input      GLutil_Input
 #define InputState GLutil_InputState
@@ -181,8 +182,21 @@
 #define make_model       GLutil_make_model
 #define render_model     GLutil_render_model
 
+
+#define model_matrix      GLutil_model_matrix
+#define view_matrix       GLutil_view_matrix
+#define projection_matrix GLutil_projection_matrix
+#define camera_direction  GLutil_camera_direction
+#define camera_right      GLutil_camera_right
+#define camera_up         GLutil_camera_up
+#define camera_basis      GLutil_camera_basis
+#define camera_orbit      GLutil_camera_orbit
+
+
 #endif // GLUTIL_INCLUDE_PREFIX
 
+
+#define GLUTIL_RAD2DEG(angle) ((angle) * 180.0f / M_PI)
 #define GLUTIL_MAP(x, src_min, src_max, dst_min, dst_max) ( (dst_min) + ( ( ( (x) - (src_min) ) * ( (dst_max) - (dst_min) ) ) / ( (src_max) - (src_min) ) ))
 #define GLUTIL_RAND(min, max) MAP((float)rand(), 0.0f, (float)RAND_MAX, (float)(min), (float)(max))
 
@@ -331,6 +345,11 @@ typedef struct {
     size_t        len;
     size_t        cap;
 } GLutil_Faces;
+
+
+typedef struct {
+    Vec3f front, right, up;
+} GLutil_3DBasis;
 
 typedef struct  {
     GLutil_Vec3f pos;
@@ -509,6 +528,12 @@ GLutil_Mat4x4f GLutil_projection_matrix(GLutil_Camera cam, float aspectRatio);
 // @TODO: pensar sobre onde armazenar as informações de width e height da janela, 
 //        de maneira a opcionalmente não precisar passar o argumento aspectRatio 
 // @NOTE: talvezz salvar aspectRatio na própria Camera?
+
+GLutil_Vec3f GLutil_camera_direction(GLutil_Camera* camera);
+GLutil_Vec3f GLutil_camera_right(GLutil_Camera* camera);
+GLutil_Vec3f GLutil_camera_up(GLutil_Camera* camera);
+GLutil_3DBasis GLutil_camera_basis(GLutil_Camera* camera);
+GLutil_Camera GLutil_camera_orbit(GLutil_Camera camera, float theta, float phi);
 
 // SHADERS
 GLuint GLutil_load_shader(const char* name, GLutil_ShaderType type);
@@ -1523,6 +1548,63 @@ GLutil_Mat4x4f GLutil_projection_matrix(GLutil_Camera cam, float aspectRatio)
         }
     };
 }
+
+
+GLutil_Vec3f GLutil_camera_direction(GLutil_Camera* camera)
+{
+    GLutil_Vec3f dir = GLutil_Vec3f_sub(camera->target, camera->pos);
+    return GLutil_Vec3f_normalize(dir);
+}
+
+GLutil_Vec3f GLutil_camera_right(GLutil_Camera* camera)
+{
+    GLutil_Vec3f dir = GLutil_camera_direction(camera);
+    GLutil_Vec3f right = GLutil_Vec3f_cross(dir, camera->up);
+    return GLutil_Vec3f_normalize(right);
+}
+
+GLutil_Vec3f GLutil_camera_up(GLutil_Camera* camera)
+{
+    GLutil_Vec3f dir = GLutil_camera_direction(camera);
+    GLutil_Vec3f right = GLutil_camera_right(camera);
+    GLutil_Vec3f up = Vec3f_normalize(Vec3f_cross(right, dir));
+    return up;
+}
+
+
+GLutil_3DBasis GLutil_camera_basis(GLutil_Camera* camera)
+{
+    GLutil_Vec3f dir = GLutil_camera_direction(camera);                // aponta da camera pra alvo, atua como eixo z local 
+    GLutil_Vec3f right = GLutil_camera_right(camera);                  // perpendicular a dir e ao 'up' global, atua como x local
+    GLutil_Vec3f up = Vec3f_normalize(Vec3f_cross(right, dir)); // perpendicular ao dois primeiros, atua como y local
+    return (GLutil_3DBasis) {
+        .front = dir, .right = right, .up = up,
+    };
+}
+
+
+GLutil_Camera GLutil_camera_orbit(GLutil_Camera camera, float theta, float phi)
+{
+    GLutil_Camera out = camera;
+    GLutil_3DBasis cam_basis = GLutil_camera_basis(&out);
+
+    GLutil_Vec3f rotated_x = out.pos;
+    GLutil_Vec3f rotated_y = out.pos;
+
+    // @TODO: aparentemente quando a câmera fica alinhada com o eixo vertical
+    //        isso causa um "lookAt flip". pesquisar de quais outras formas
+    //        costumam contornar essa situação além de simplesmente ignorar
+    //        a rotação caso a câmera esteja muito perto do eixo.
+    float zenith = fabs(GLUTIL_RAD2DEG(Vec3f_angle_between(out.pos, out.up)));
+    if ( 1.0f < zenith && zenith < 180.0f ) {
+        rotated_x = GLutil_Vec3f_rotate_around_axis(rotated_x, cam_basis.right, theta);
+        rotated_y = rotated_x;
+    }
+    rotated_y = GLutil_Vec3f_rotate_around_axis(rotated_y, cam_basis.up , phi);
+    out.pos = rotated_y;
+    return out;
+}
+
 
 /*******************************************************************************
  *                 INPUT (MOUSE, KEYBOARD, ETC)                                *

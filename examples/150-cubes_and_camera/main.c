@@ -20,8 +20,6 @@
 
 #define STEP_SIZE 2.0f
 
-#define RAD2DEG(angle) ((angle) * 180.0f / M_PI)
-
 
 Model CUBES[CUBES_COUNT] = {0};
 
@@ -55,110 +53,41 @@ void init_cubes(ObjData* obj)
     }
 }
 
-Vec3f camera_direction(Camera* camera)
+
+void update_camera_position(GLutil* glutil)
 {
-    GLutil_Vec3f dir = GLutil_Vec3f_sub(camera->target, camera->pos);
-    return GLutil_Vec3f_normalize(dir);
-}
-
-Vec3f camera_right(Camera* camera)
-{
-    GLutil_Vec3f dir = camera_direction(camera);
-    GLutil_Vec3f right = GLutil_Vec3f_cross(dir, camera->up);
-    return GLutil_Vec3f_normalize(right);
-}
-
-Vec3f camera_up(Camera* camera)
-{
-    GLutil_Vec3f dir = camera_direction(camera);
-    GLutil_Vec3f right = camera_right(camera);
-    GLutil_Vec3f up = Vec3f_normalize(Vec3f_cross(right, dir));
-    return up;
-}
-
-typedef struct {
-    Vec3f front, right, up;
-} _3DBasis;
-
-_3DBasis camera_basis(Camera* camera)
-{
-    GLutil_Vec3f dir = camera_direction(camera);                // aponta da camera pra alvo, atua como eixo z local 
-    GLutil_Vec3f right = camera_right(camera);                  // perpendicular a dir e ao 'up' global, atua como x local
-    GLutil_Vec3f up = Vec3f_normalize(Vec3f_cross(right, dir)); // perpendicular ao dois primeiros, atua como y local
-    return (_3DBasis) {
-        .front = dir, .right = right, .up = up,
-    };
-}
-
-
-Camera handle_mouse(GLutil* glutil)
-{
-    Camera out  = glutil->camera;
-    Input input = glutil->input;
-
-
-    printf( "(%ld) HANDLE MOUSE:  input.mouse_button_right.pressed = %s && input.mouse_movement.moved = %s\n",
-        glutil->cur_t_nanos,
-        input.mouse_button_right.pressed ? "true" : "false",
-        input.mouse_movement.moved ? "true" : "false"
-    );
-    if ( input.mouse_button_right.pressed && input.mouse_movement.moved ) { 
-        
-
-        Vec2i delta = Vec2i_sub(input.mouse_movement.pos, input.mouse_movement.last_pos);
-
-        float cam_dist = Vec3f_length(Vec3f_sub(glutil->camera.pos, glutil->camera.target));
-        _3DBasis cam_basis = camera_basis(&out);
-
-        Vec3f rotated_x = out.pos;
-        Vec3f rotated_y = out.pos;
-
-
-#define MOUSE_SENSITIVITY 0.1f
-        // @TODO: aparentemente quando a câmera fica alinhada com o eixo vertical
-        //        isso causa um "lookAt flip". pesquisar de quais outras formas
-        //        costumam contornar essa situação além de simplesmente ignorar
-        //        a rotação caso a câmera esteja muito perto do eixo.
-        float zenith = fabs(RAD2DEG(Vec3f_angle_between(out.pos, out.up)));
-        if ( 1.0f < zenith && zenith < 180.0f ) {
-            float theta = -MOUSE_SENSITIVITY * atan2f( delta.y, cam_dist );
-            rotated_x = Vec3f_rotate_around_axis(rotated_x, cam_basis.right, theta);
-            rotated_y = rotated_x;
-        }
-        float phi = -MOUSE_SENSITIVITY * atan2f( delta.x, cam_dist );
-        rotated_y = Vec3f_rotate_around_axis(rotated_y, cam_basis.up , phi);
-        out.pos = rotated_y;
-
-    }
-
-    return out;
-}
-
-void handle_keypress(GLutil* glutil, XEvent event)
-{
-    float angle = 0.01f;
-    float delta_z = 0.5f;
     Vec3f campos = glutil->camera.pos;
     Vec3f camtrg = glutil->camera.target;
-    switch (event.xkey.keycode) {
-    case RIGHT_ARROW: { }; break;
-    case LEFT_ARROW: { }; break;
-    case UP_ARROW: {
+
+    if ( glutil->input.arrow_up.pressed ) {
         Vec3f dir = Vec3f_sub(camtrg, campos);
         dir = Vec3f_normalize(dir);
         Vec3f step = Vec3f_scale(dir, STEP_SIZE);
         campos = Vec3f_add(campos, step);
-    }; break;
-    case DOWN_ARROW: {
+    }
+
+    if ( glutil->input.arrow_down.pressed ) {
         Vec3f dir = Vec3f_sub(camtrg, campos);
         dir = Vec3f_normalize(dir);
         Vec3f step = Vec3f_scale(dir, STEP_SIZE);
         campos = Vec3f_sub(campos, step);
-    }; break;
-    }
+    };
 
     glutil->camera.pos = campos;
     glutil->camera.target = camtrg;
+}
+
+
+void move_camera_from_mouse(GLutil* glutil)
+{
+    const float mouse_sensiv = 0.3f;
+    if ( glutil->input.mouse_button_right.pressed && glutil->input.mouse_movement.moved ) { 
+        float cam_dist = Vec3f_length(Vec3f_sub(glutil->camera.pos, glutil->camera.target));
+        Vec2i delta = Vec2i_sub(glutil->input.mouse_movement.pos, glutil->input.mouse_movement.last_pos);
+        float theta = -mouse_sensiv * atan2f( delta.y, cam_dist );
+        float phi =   -mouse_sensiv * atan2f( delta.x, cam_dist );
+        glutil->camera = camera_orbit(glutil->camera, theta, phi);
+    }
 }
 
 
@@ -185,13 +114,13 @@ int main(void) {
     wireframe_mode();
 #endif
     for (;;) {
-        Camera newcam = handle_mouse(&glutil);
-        glutil.camera.pos = newcam.pos;
-
-
         uint64_t dt = begin_frame(&glutil);
-        clear_bg(BLACK);
-        for (int i = 0; i < CUBES_COUNT; ++i) render_model(&glutil, &CUBES[i]);
+        {
+            clear_bg(BLACK);
+            move_camera_from_mouse(&glutil);
+            update_camera_position(&glutil);
+            for (int i = 0; i < CUBES_COUNT; ++i) render_model(&glutil, &CUBES[i]);
+        }
         end_frame(&glutil);
     }
 
