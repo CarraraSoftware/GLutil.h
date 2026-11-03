@@ -152,6 +152,7 @@
 #define end_frame         GLutil_end_frame
 #define present           GLutil_present
 #define set_target_fps    GLutil_set_target_fps
+#define unlimited_fps     GLutil_unlimited_fps
 #define next_event        GLutil_next_event
 #define t_secs            GLutil_t_secs
 
@@ -454,6 +455,7 @@ void GLutil_clear_bg( Color color );
 void GLutil_end_frame(GLutil *glutil); // faz o swap dos buffers E atualiza o estado interno do GLutil (principalmente o delta entre frames)
 void GLutil_present(GLutil* glutil);  // faz o swap dos buffers do opengl
 void GLutil_set_target_fps(GLutil* glutil, float fps); // usa fps para calcular o delay entre frames como 1/fps e espera o delay somente se delay > 0
+void GLutil_unlimited_fps(GLutil* glutil);             // coloca zero nanos de delay entre frames
 bool GLutil_next_event(GLutil* glutil, XEvent* event);
 float GLutil_t_secs(GLutil* glutil);
 
@@ -866,6 +868,11 @@ void GLutil_set_target_fps(GLutil* glutil, float fps)
     glutil->target_sleep_us = (uint64_t)target_microsecs;
 }
 
+void GLutil_unlimited_fps(GLutil* glutil)
+{
+    glutil->target_sleep_us = (uint64_t)0;
+}
+
 
 bool GLutil_next_event(GLutil* glutil, XEvent* event)
 {
@@ -1036,9 +1043,9 @@ float GLutil_Vec3f_angle_between(GLutil_Vec3f a, GLutil_Vec3f b)
     // AºB = |A| * |B| * cos(theta)
     // cos(theta) = AºB / |A|*|B|
     // theta = arccos(AºB / |A|*|B|)
-    float la = Vec3f_length(a); // |A|
-    float lb = Vec3f_length(b); // |B|
-    float d = Vec3f_dot(a, b);  // AºB
+    float la = GLutil_Vec3f_length(a); // |A|
+    float lb = GLutil_Vec3f_length(b); // |B|
+    float d =  GLutil_Vec3f_dot(a, b);  // AºB
     float cosine = d / (la*lb); // AºB / |A|*|B|
     return acosf(cosine);       // arccos(AºB / |A|*|B|)
 }
