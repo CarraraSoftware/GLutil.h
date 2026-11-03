@@ -19,7 +19,7 @@ int main(void) {
     Model cube = model_from_obj(&obj);
     cube.texture_id = load_texture(TEXTURE_FILE_PATH);
 
-    glutil.camera->pos.z = 30.0f;
+    glutil.camera.pos.z = 30.0f;
 
 
     for (size_t i = 0; i < obj.vertices.len; i++) {

@@ -77,6 +77,7 @@
 
 #define Color   GLutil_Color
 
+#define Vec2i   GLutil_Vec2i
 #define Vec2f   GLutil_Vec2f
 #define Vec3f   GLutil_Vec3f
 #define Vec4f   GLutil_Vec4f
@@ -91,6 +92,9 @@
 
 #define Camera GLutil_Camera
 
+#define Input      GLutil_Input
+#define InputState GLutil_InputState
+#define MouseMove  GLutil_MouseMove
 
 #define Vertex   GLutil_Vertex
 #define Vertices GLutil_Vertices
@@ -108,6 +112,15 @@
 #define clear_bg GLutil_clear_bg
 
 #define wireframe_mode GLutil_wireframe_mode
+
+#define Vec2i_add          GLutil_Vec2i_add
+#define Vec2i_sub          GLutil_Vec2i_sub
+#define Vec2i_sqlength     GLutil_Vec2i_sqlength
+#define Vec2i_length       GLutil_Vec2i_length
+#define Vec2i_rotccw       GLutil_Vec2i_rotccw
+#define Vec2i_rotcw        GLutil_Vec2i_rotcw
+#define Vec2i_dot          GLutil_Vec2i_dot
+#define Vec2i_scale        GLutil_Vec2i_scale
 
 #define Vec2f_add          GLutil_Vec2f_add
 #define Vec2f_sub          GLutil_Vec2f_sub
@@ -153,6 +166,7 @@
 #define present           GLutil_present
 #define set_target_fps    GLutil_set_target_fps
 #define unlimited_fps     GLutil_unlimited_fps
+#define update_input      GLutil_update_input
 #define next_event        GLutil_next_event
 #define t_secs            GLutil_t_secs
 
@@ -208,33 +222,6 @@
  *                                                                             *
  ******************************************************************************/
 
-typedef struct GLutil_Camera GLutil_Camera;
-
-typedef struct GLutil {
-    Window       window;
-    Display*     display;
-    GLXContext   ctx;
-    XVisualInfo* vi;
-    GLXFBConfig  fbc;
-
-    int winwidth;
-    int winheight;
-
-
-    uint64_t     prev_t_nanos;    // timestamp em nanosegundos do último frame
-    uint64_t     cur_t_nanos;     // timestamp em nanosegundos do frame atual
-    uint64_t     dt_nanos;        // delta time em nanosegundos entre os dois últimos frames
-    uint64_t     target_sleep_us; // quantidade de microsegundos de delay para atingir o FPS alvo
-
-    GLuint       current_vao ;
-    int          current_ebo_count;
-
-    GLutil_Camera* camera; // @TODO: não consegui organizar as informações de tipos
-                           //        de forma a ter acesso à Camera antes da declaração
-                           //        da struct GLutil, então deixei como pointer mesmo.
-                           //        mas acredito que ter o a struct por valor seria melhor.
-
-} GLutil;
 
 
 typedef struct {
@@ -244,6 +231,9 @@ typedef struct {
     unsigned char alpha;
 } GLutil_Color;
 
+typedef struct  {
+    int x, y;
+} GLutil_Vec2i;
 
 typedef struct  {
     float x, y;
@@ -308,7 +298,7 @@ typedef struct {
 
 typedef GLutil_Mat4x4f GLutil_Mat4f;
 
- typedef enum {
+typedef enum {
     GLUTIL_VERT_SHADER = GL_VERTEX_SHADER,
     GLUTIL_FRAG_SHADER = GL_FRAGMENT_SHADER,
 } GLutil_ShaderType;
@@ -342,7 +332,7 @@ typedef struct {
     size_t        cap;
 } GLutil_Faces;
 
-struct GLutil_Camera {
+typedef struct  {
     GLutil_Vec3f pos;
     GLutil_Vec3f target;
     GLutil_Vec3f up;
@@ -350,8 +340,7 @@ struct GLutil_Camera {
     float fovX;
     float near;
     float far;
-
-};
+} GLutil_Camera;
 
 typedef struct {
     GLutil_Vertices vertices;  // vertex data parsed from .obj file
@@ -378,19 +367,72 @@ typedef struct {
 } GLutil_Model;
 
 
-#define GLUTIL_DEFAULT_CAM_FOV  90.0f
-#define GLUTIL_DEFAULT_CAM_NEAR 0.1f
-#define GLUTIL_DEFAULT_CAM_FAR  1000.0f
 
-GLutil_Camera GLUTIL_DEFAULT_CAMERA = {
-    .pos =    { .x = 0.0f, .y = 0.0f, .z = 30.0f },
-    .target = { .x = 0.0f, .y = 0.0f, .z = 0.0f },
-    .up =     { .x = 0.0f, .y = 1.0f, .z = 0.0f },
+// a merda X11...
+#define RIGHT_ARROW 114
+#define LEFT_ARROW  113
+#define DOWN_ARROW  116
+#define UP_ARROW    111
 
-    .fovX = GLUTIL_DEFAULT_CAM_FOV,
-    .near = GLUTIL_DEFAULT_CAM_NEAR,
-    .far  = GLUTIL_DEFAULT_CAM_FAR,
-};
+typedef enum {
+    MOUSE_BUTTON_RIGHT     = 1, 
+    MOUSE_WHEEL_CLICK      = 2, 
+    MOUSE_BUTTON_LEFT      = 3, 
+    MOUSE_WHEEL_UP         = 4, 
+    MOUSE_WHEEL_DOWN       = 5, 
+    MOUSE_SIDE_BUTTON_UP   = 8, 
+    MOUSE_SIDE_BUTTON_DOWN = 9, 
+} X11_Codes;
+
+typedef struct {
+    bool  moved;
+    GLutil_Vec2i last_pos;
+    GLutil_Vec2i pos;
+} GLutil_MouseMove;
+
+typedef struct {
+    bool down:    1;
+    bool up:      1;
+    bool pressed: 1;
+} GLutil_InputState;
+
+
+typedef struct {
+    GLutil_InputState mouse_button_right;
+    GLutil_InputState mouse_button_left;
+    GLutil_MouseMove  mouse_movement;
+    
+    GLutil_InputState arrow_up;
+    GLutil_InputState arrow_down;
+} GLutil_Input;
+
+
+/*******************************************************************************
+ *                        THE BIG FAT GLUTIL                                                     *
+ *******************************************************************************/
+typedef struct GLutil {
+    Window       window;
+    Display*     display;
+    GLXContext   ctx;
+    XVisualInfo* vi;
+    GLXFBConfig  fbc;
+
+    int winwidth;
+    int winheight;
+
+
+    uint64_t     prev_t_nanos;    // timestamp em nanosegundos do último frame
+    uint64_t     cur_t_nanos;     // timestamp em nanosegundos do frame atual
+    uint64_t     dt_nanos;        // delta time em nanosegundos entre os dois últimos frames
+    uint64_t     target_sleep_us; // quantidade de microsegundos de delay para atingir o FPS alvo
+
+    GLuint       current_vao ;
+    int          current_ebo_count;
+
+    GLutil_Camera camera;
+    GLutil_Input  input;
+} GLutil;
+
 
 
 
@@ -452,17 +494,21 @@ uint64_t GLutil_get_time_nanos(void);
 uint64_t GLutil_frame_delta_nanos(GLutil *glutil);
 uint64_t GLutil_begin_frame(GLutil *glutil);
 void GLutil_clear_bg( Color color );
-void GLutil_end_frame(GLutil *glutil); // faz o swap dos buffers E atualiza o estado interno do GLutil (principalmente o delta entre frames)
-void GLutil_present(GLutil* glutil);  // faz o swap dos buffers do opengl
+void GLutil_end_frame(GLutil *glutil);                 // faz o swap dos buffers E atualiza o estado interno do GLutil (principalmente o delta entre frames)
+void GLutil_present(GLutil* glutil);                   // faz o swap dos buffers do opengl
 void GLutil_set_target_fps(GLutil* glutil, float fps); // usa fps para calcular o delay entre frames como 1/fps e espera o delay somente se delay > 0
 void GLutil_unlimited_fps(GLutil* glutil);             // coloca zero nanos de delay entre frames
+void GLutil_update_input(GLutil* glutil);
 bool GLutil_next_event(GLutil* glutil, XEvent* event);
 float GLutil_t_secs(GLutil* glutil);
 
 // CAMERA
 GLutil_Mat3x3f GLutil_model_matrix(GLutil_Camera cam);
 GLutil_Mat4x4f GLutil_view_matrix(GLutil_Camera cam);
-GLutil_Mat4x4f GLutil_projection_matrix(GLutil_Camera cam, float aspectRatio); // @TODO: pensar sobre onde armazenar as informações de width e height da janela, de maneira a opcionalmente não precisar passar o argumento aspectRatio 
+GLutil_Mat4x4f GLutil_projection_matrix(GLutil_Camera cam, float aspectRatio); 
+// @TODO: pensar sobre onde armazenar as informações de width e height da janela, 
+//        de maneira a opcionalmente não precisar passar o argumento aspectRatio 
+// @NOTE: talvezz salvar aspectRatio na própria Camera?
 
 // SHADERS
 GLuint GLutil_load_shader(const char* name, GLutil_ShaderType type);
@@ -488,11 +534,23 @@ GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
 
 
 
+
 /**************************** FIM DO HEADER ***********************************/
-
-
-
 #ifdef GLUTIL_IMPLEMENTATION
+
+#define GLUTIL_DEFAULT_CAM_FOV  90.0f
+#define GLUTIL_DEFAULT_CAM_NEAR 0.1f
+#define GLUTIL_DEFAULT_CAM_FAR  1000.0f
+
+GLutil_Camera GLUTIL_DEFAULT_CAMERA = {
+    .pos =    { .x = 0.0f, .y = 0.0f, .z = 30.0f },
+    .target = { .x = 0.0f, .y = 0.0f, .z = 0.0f },
+    .up =     { .x = 0.0f, .y = 1.0f, .z = 0.0f },
+
+    .fovX = GLUTIL_DEFAULT_CAM_FOV,
+    .near = GLUTIL_DEFAULT_CAM_NEAR,
+    .far  = GLUTIL_DEFAULT_CAM_FAR,
+};
 
 #define GLUTIL_DIV_EPS 0.000001
 
@@ -762,7 +820,8 @@ void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h)
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    glutil->camera = &GLUTIL_DEFAULT_CAMERA;
+    glutil->camera = GLUTIL_DEFAULT_CAMERA;
+    glutil->input  = (GLutil_Input){0};
 
     glutil->cur_t_nanos  = 0;
     glutil->prev_t_nanos = 0;
@@ -851,6 +910,7 @@ uint64_t GLutil_begin_frame(GLutil *glutil)
 {
     glutil->prev_t_nanos = glutil->cur_t_nanos;
     glutil->cur_t_nanos = GLutil_get_time_nanos();
+    GLutil_update_input(glutil);
     return glutil->cur_t_nanos - glutil->prev_t_nanos;
 }
 
@@ -888,6 +948,75 @@ float GLutil_t_secs(GLutil* glutil)
 /*******************************************************************************
  *                     VETORES E ALGEBRA LINEAR                                *
  *******************************************************************************/
+
+GLutil_Vec2i GLutil_Vec2i_add(GLutil_Vec2i a, GLutil_Vec2i b) 
+{
+    return (GLutil_Vec2i) {
+        .x = a.x + b.x,
+        .y = a.y + b.y,
+    };
+}
+
+GLutil_Vec2i GLutil_Vec2i_sub(GLutil_Vec2i a, GLutil_Vec2i b)
+{
+    return (GLutil_Vec2i) {
+        .x = a.x - b.x,
+        .y = a.y - b.y,
+    };
+}
+
+int GLutil_Vec2i_sqlength(GLutil_Vec2i v)
+{
+    // c² = a² + b²
+    return (v.x*v.x + v.y*v.y);
+}
+
+float GLutil_Vec2i_length(GLutil_Vec2i v)
+{
+    // c = sqrtf(a² + b²)
+    return sqrtf(GLutil_Vec2i_sqlength(v));
+}
+
+GLutil_Vec2i GLutil_Vec2i_rotccw(GLutil_Vec2i v, float theta)
+{
+        float sine   = sinf(theta);
+        float cosine = cosf(theta);
+        
+        GLutil_Vec2i v_rot = (GLutil_Vec2i) {
+            .x = + v.x * cosine + v.y * sine,
+            .y = + v.y * cosine - v.x * sine,
+        };
+
+        return v_rot;
+}
+
+GLutil_Vec2i GLutil_Vec2i_rotcw(GLutil_Vec2i v, float theta)
+{
+        float sine   = sinf(theta);
+        float cosine = cosf(theta);
+        
+        GLutil_Vec2i v_rot = (GLutil_Vec2i) {
+            .x = + v.x * cosine - v.y * sine,
+            .y = + v.y * cosine + v.x * sine,
+        };
+
+        return v_rot;
+}
+
+int GLutil_Vec2i_dot(GLutil_Vec2i a, GLutil_Vec2i b)
+{
+    return  a.x * b.x + a.y * b.y;
+}
+
+
+GLutil_Vec2i GLutil_Vec2i_scale(GLutil_Vec2i v, float sx, float sy)
+{
+    return (GLutil_Vec2i) {
+        .x = v.x * sx,
+        .y = v.y * sy,
+    };
+}
+
 
 GLutil_Vec2f GLutil_Vec2f_add(GLutil_Vec2f a, GLutil_Vec2f b) 
 {
@@ -997,17 +1126,6 @@ float GLutil_Vec3f_length(GLutil_Vec3f v)
     return sqrt(GLutil_Vec3f_sqlength(v));
 }
 
-
-GLutil_Vec3f GLutil_Vec3f_div(GLutil_Vec3f v, float d)
-{
-    if (d < GLUTIL_DIV_EPS) return (GLutil_Vec3f){ 0, 0, 0 };
-    return (GLutil_Vec3f) {
-        .x = v.x / d,
-        .y = v.y / d,
-        .z = v.z / d,
-    };
-}
-
 GLutil_Vec3f GLutil_Vec3f_normalize(GLutil_Vec3f v)
 {
     return GLutil_Vec3f_div(v, GLutil_Vec3f_length(v));
@@ -1021,6 +1139,27 @@ GLutil_Vec3f GLutil_Vec3f_scale(GLutil_Vec3f v, float s)
         .x = v.x * s,
         .y = v.y * s,
         .z = v.z * s,
+    };
+}
+
+GLutil_Vec3f GLutil_Vec3f_div(GLutil_Vec3f v, float d)
+{
+    // @NOTE: não tenho certeza sobre qual valor utilizar como retorno
+    //        quando d = 0
+    //        opção1: Vec3f { 0, 0, 0 } // vetor nulo
+    //        opção2: Vec3f { MAX_VAL, MAX_VAL, MAX_VAL } // maior vetor possível
+    //        acho a opção 2 faz mais sentido, dado que o lim (1/x) = +inf
+    //                                                    x->0
+
+    const float MAX_VAL = 999999999999.9;
+    if (d < GLUTIL_DIV_EPS) {
+        return (GLutil_Vec3f) { MAX_VAL, MAX_VAL, MAX_VAL };
+        // return (GLutil_Vec3f){0 , 0, 0 };
+    }
+    return (GLutil_Vec3f) {
+        .x = v.x / d,
+        .y = v.y / d,
+        .z = v.z / d,
     };
 }
 
@@ -1201,7 +1340,7 @@ GLutil_Mat4x4f GLutil_Mat4x4f_mul(GLutil_Mat4x4f A, GLutil_Mat4x4f B)
 
 
 /*******************************************************************************
- *                     DESENHAR FORMAS GEOMÉTRICAS                             *
+ *                     DESENHAR FORMAS GEOMÉTRICAS (OpenGL 1.1)                *
  *******************************************************************************/
 
 
@@ -1384,6 +1523,78 @@ GLutil_Mat4x4f GLutil_projection_matrix(GLutil_Camera cam, float aspectRatio)
         }
     };
 }
+
+/*******************************************************************************
+ *                 INPUT (MOUSE, KEYBOARD, ETC)                                *
+ ******************************************************************************/
+void GLutil_update_input(GLutil* glutil)
+{
+    glutil->input.arrow_up.down = false;
+    glutil->input.arrow_down.down = false;
+
+    glutil->input.mouse_button_left.down = false;
+    glutil->input.mouse_button_right.down = false;
+
+    glutil->input.mouse_movement.moved = false;
+    glutil->input.mouse_movement.last_pos = glutil->input.mouse_movement.pos;
+
+    while (XPending(glutil->display)) {
+        XEvent event;
+        XNextEvent(glutil->display, &event);
+
+        if (event.type == KeyPress) {
+            if (event.xkey.keycode == UP_ARROW) {
+                glutil->input.arrow_up.down    = true;
+                glutil->input.arrow_up.pressed = true;
+            }
+            if (event.xkey.keycode == DOWN_ARROW) {
+                glutil->input.arrow_down.down    = true;
+                glutil->input.arrow_down.pressed = true;
+            }
+        }
+
+        if (event.type == KeyRelease) {
+            if (event.xkey.keycode == UP_ARROW) {
+                glutil->input.arrow_up.down    = false;
+                glutil->input.arrow_up.pressed = false;
+            }
+            if (event.xkey.keycode == DOWN_ARROW) {
+                glutil->input.arrow_down.down    = false;
+                glutil->input.arrow_down.pressed = false;
+            }
+        }
+
+        if (event.type == ButtonPress) {
+            if (event.xbutton.button == MOUSE_BUTTON_RIGHT) {
+                glutil->input.mouse_button_right.down    = true;
+                glutil->input.mouse_button_right.pressed = true;
+            }
+            if (event.xbutton.button == MOUSE_BUTTON_LEFT) {
+                glutil->input.mouse_button_left.down    = true;
+                glutil->input.mouse_button_left.pressed = true;
+            }
+        }
+
+        if (event.type == ButtonRelease) {
+            if (event.xbutton.button == MOUSE_BUTTON_RIGHT) {
+                glutil->input.mouse_button_right.down    = false;
+                glutil->input.mouse_button_right.pressed = false;
+            }
+            if (event.xbutton.button == MOUSE_BUTTON_LEFT) {
+                glutil->input.mouse_button_left.down    = false;
+                glutil->input.mouse_button_left.pressed = false;
+            }
+        }
+
+        if (event.type == MotionNotify) {
+            glutil->input.mouse_movement.moved = true;
+            glutil->input.mouse_movement.pos.x = event.xmotion.x;
+            glutil->input.mouse_movement.pos.y = event.xmotion.y;
+        }
+    }
+}
+
+
 
 /* @TODO: checar comentário na declaração da assinatura de projection_matrix
 GLutil_Mat4x4f GLutil_projection_matrix(GLutil_Camera cam)
@@ -1694,15 +1905,15 @@ void GLutil_render_model(GLutil* glutil, GLutil_Model* model)
 
     GLuint model_loc = glGetUniformLocation(model->geometry->shader_program, "model_mat");
     CHECK_GL_ERROR();
-    glUniformMatrix3fv(model_loc, 1, GL_FALSE, GLutil_model_matrix(*glutil->camera).data);
+    glUniformMatrix3fv(model_loc, 1, GL_FALSE, GLutil_model_matrix(glutil->camera).data);
     CHECK_GL_ERROR();
 
     GLuint view_loc = glGetUniformLocation(model->geometry->shader_program, "view_mat");
     CHECK_GL_ERROR();
-    glUniformMatrix4fv(view_loc, 1, GL_TRUE, GLutil_view_matrix(*glutil->camera).data);
+    glUniformMatrix4fv(view_loc, 1, GL_TRUE, GLutil_view_matrix(glutil->camera).data);
     CHECK_GL_ERROR();
 
-    GLutil_Mat4x4f projection = GLutil_projection_matrix(*glutil->camera, glutil->winwidth / (float)glutil->winheight);
+    GLutil_Mat4x4f projection = GLutil_projection_matrix(glutil->camera, glutil->winwidth / (float)glutil->winheight);
     GLuint proj_loc = glGetUniformLocation(model->geometry->shader_program, "proj_mat");
     CHECK_GL_ERROR();
     glUniformMatrix4fv(proj_loc, 1, GL_TRUE, projection.data);

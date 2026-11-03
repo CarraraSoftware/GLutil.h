@@ -4,6 +4,8 @@
 #define GLUTIL_IMPLEMENTATION // inclui as implementações de todas as funções
 #include "../../glutil.h"
 
+#define WIRED 0
+
 #define WINDOW_WIDTH  1200
 #define WINDOW_HEIGHT 1200
 
@@ -16,10 +18,6 @@
 #define CUBE_MAX_POS  10000.0f
 
 
-#define RIGHT_ARROW 114
-#define LEFT_ARROW  113
-#define DOWN_ARROW  116
-#define UP_ARROW    111
 #define STEP_SIZE 2.0f
 
 #define RAD2DEG(angle) ((angle) * 180.0f / M_PI)
@@ -30,6 +28,8 @@ Model CUBES[CUBES_COUNT] = {0};
 #define OBJ_PATH  "./examples/150-cubes_and_camera/assets/cube_tex.obj"
 #define TEXTURE_1 "./examples/150-cubes_and_camera/assets/texture1.jpg"
 #define TEXTURE_2 "./examples/150-cubes_and_camera/assets/texture2.png"
+
+
 
 void init_cubes(ObjData* obj)
 {
@@ -55,65 +55,80 @@ void init_cubes(ObjData* obj)
     }
 }
 
-Camera handle_mouse(GLutil* glutil, XEvent event)
+Vec3f camera_direction(Camera* camera)
 {
-    Camera out = *glutil->camera;
+    GLutil_Vec3f dir = GLutil_Vec3f_sub(camera->target, camera->pos);
+    return GLutil_Vec3f_normalize(dir);
+}
 
-    static bool dragging = false;
-    static int last_x = -1;
-    static int last_y = -1;
+Vec3f camera_right(Camera* camera)
+{
+    GLutil_Vec3f dir = camera_direction(camera);
+    GLutil_Vec3f right = GLutil_Vec3f_cross(dir, camera->up);
+    return GLutil_Vec3f_normalize(right);
+}
+
+Vec3f camera_up(Camera* camera)
+{
+    GLutil_Vec3f dir = camera_direction(camera);
+    GLutil_Vec3f right = camera_right(camera);
+    GLutil_Vec3f up = Vec3f_normalize(Vec3f_cross(right, dir));
+    return up;
+}
+
+typedef struct {
+    Vec3f front, right, up;
+} _3DBasis;
+
+_3DBasis camera_basis(Camera* camera)
+{
+    GLutil_Vec3f dir = camera_direction(camera);                // aponta da camera pra alvo, atua como eixo z local 
+    GLutil_Vec3f right = camera_right(camera);                  // perpendicular a dir e ao 'up' global, atua como x local
+    GLutil_Vec3f up = Vec3f_normalize(Vec3f_cross(right, dir)); // perpendicular ao dois primeiros, atua como y local
+    return (_3DBasis) {
+        .front = dir, .right = right, .up = up,
+    };
+}
 
 
-    switch (event.type) {
-        case ButtonRelease: {
-            dragging = false;
-            printf("Mouse Event: [RELEASED]: %d, %d\n", event.xbutton.x, event.xbutton.y);
-        }; break;
-        case ButtonPress: {
-            dragging = true;
-            last_x = event.xbutton.x;
-            last_y = event.xbutton.y;
-            
-            printf("Mouse Event: [PRESSED]: %d, %d\n", event.xbutton.x, event.xbutton.y);
-        }; break;
+Camera handle_mouse(GLutil* glutil)
+{
+    Camera out  = glutil->camera;
+    Input input = glutil->input;
 
-        case MotionNotify: {
-            if ( dragging ) {
-                int delta_x =  event.xmotion.x - last_x;
-                int delta_y = -event.xmotion.y + last_y;
 
-                GLutil_Vec3f dir = GLutil_Vec3f_sub(out.pos, out.target);
-                dir = GLutil_Vec3f_normalize(dir);
+    printf( "(%ld) HANDLE MOUSE:  input.mouse_button_right.pressed = %s && input.mouse_movement.moved = %s\n",
+        glutil->cur_t_nanos,
+        input.mouse_button_right.pressed ? "true" : "false",
+        input.mouse_movement.moved ? "true" : "false"
+    );
+    if ( input.mouse_button_right.pressed && input.mouse_movement.moved ) { 
+        
 
-                GLutil_Vec3f right = GLutil_Vec3f_cross(out.up, dir);
-                right = GLutil_Vec3f_normalize(right);
+        Vec2i delta = Vec2i_sub(input.mouse_movement.pos, input.mouse_movement.last_pos);
 
-                GLutil_Vec3f up = GLutil_Vec3f_cross(dir, right);
-                up = GLutil_Vec3f_normalize(up);
+        float cam_dist = Vec3f_length(Vec3f_sub(glutil->camera.pos, glutil->camera.target));
+        _3DBasis cam_basis = camera_basis(&out);
 
-                float cam_dist = Vec3f_length(Vec3f_sub(glutil->camera->pos, glutil->camera->target));
+        Vec3f rotated_x = out.pos;
+        Vec3f rotated_y = out.pos;
 
-                Vec3f rotated_x = out.pos;
-                Vec3f rotated_y = out.pos;
 
-                // @TODO: aparentemente quando a câmera fica alinhada com o eixo vertical
-                //        isso causa um "lookAt flip". pesquisar de quais outras formas
-                //        costumam contornar essa situação além de simplesmente ignorar
-                //        a rotação caso a câmera esteja muito perto do eixo.
-                float zenith = fabs(RAD2DEG(Vec3f_angle_between(dir, out.up)));
-                if ( 1.0f < zenith && zenith < 180.0f ) {
-                    float theta = 0.1 * atan2f( delta_y, cam_dist );
-                    rotated_x = Vec3f_rotate_around_axis(rotated_x, right, theta);
-                    rotated_y = rotated_x;
-                }
-                float phi = -0.1 * atan2f( delta_x, cam_dist );
-                rotated_y = Vec3f_rotate_around_axis(rotated_y, up, phi);
-                out.pos = rotated_y;
+#define MOUSE_SENSITIVITY 0.1f
+        // @TODO: aparentemente quando a câmera fica alinhada com o eixo vertical
+        //        isso causa um "lookAt flip". pesquisar de quais outras formas
+        //        costumam contornar essa situação além de simplesmente ignorar
+        //        a rotação caso a câmera esteja muito perto do eixo.
+        float zenith = fabs(RAD2DEG(Vec3f_angle_between(out.pos, out.up)));
+        if ( 1.0f < zenith && zenith < 180.0f ) {
+            float theta = -MOUSE_SENSITIVITY * atan2f( delta.y, cam_dist );
+            rotated_x = Vec3f_rotate_around_axis(rotated_x, cam_basis.right, theta);
+            rotated_y = rotated_x;
+        }
+        float phi = -MOUSE_SENSITIVITY * atan2f( delta.x, cam_dist );
+        rotated_y = Vec3f_rotate_around_axis(rotated_y, cam_basis.up , phi);
+        out.pos = rotated_y;
 
-                last_x = event.xmotion.x;
-                last_y = event.xmotion.y;
-            }
-        }; break;
     }
 
     return out;
@@ -123,8 +138,8 @@ void handle_keypress(GLutil* glutil, XEvent event)
 {
     float angle = 0.01f;
     float delta_z = 0.5f;
-    Vec3f campos = glutil->camera->pos;
-    Vec3f camtrg = glutil->camera->target;
+    Vec3f campos = glutil->camera.pos;
+    Vec3f camtrg = glutil->camera.target;
     switch (event.xkey.keycode) {
     case RIGHT_ARROW: { }; break;
     case LEFT_ARROW: { }; break;
@@ -142,38 +157,37 @@ void handle_keypress(GLutil* glutil, XEvent event)
     }; break;
     }
 
-    glutil->camera->pos = campos;
-    glutil->camera->target = camtrg;
+    glutil->camera.pos = campos;
+    glutil->camera.target = camtrg;
 }
 
 
 int main(void) {
     GLutil glutil = {0};
     init(&glutil, WINDOW_WIDTH, WINDOW_HEIGHT);
-    set_target_fps(&glutil, 999999.0f);
+    unlimited_fps(&glutil);
     srand(get_time_nanos());
-    glutil.camera->pos.x = 00.0f;
-    glutil.camera->pos.y = 50.0f;
-    glutil.camera->pos.z = 50.0f;
-    glutil.camera->fovX = 90.0f;
 
+    glutil.camera.pos.x = 00.0f;
+    glutil.camera.pos.y = 50.0f;
+    glutil.camera.pos.z = 50.0f;
+    glutil.camera.fovX = 90.0f;
+
+
+    /*
+    printf("Size of Input: %ld\n", sizeof(Input));
+    return 0;
+    */
     ObjData obj = GLutil_load_obj_file(OBJ_PATH);
     init_cubes(&obj);
     
-    // wireframe_mode();
+#if WIRED
+    wireframe_mode();
+#endif
     for (;;) {
+        Camera newcam = handle_mouse(&glutil);
+        glutil.camera.pos = newcam.pos;
 
-        while (XPending(glutil.display)) {
-            XEvent event;
-            XNextEvent(glutil.display, &event);
-            if (event.type == KeyPress)
-                handle_keypress(&glutil, event);
-            else if (event.type == MotionNotify || event.type == ButtonPress || event.type == ButtonRelease)
-            {
-                Camera newcam = handle_mouse(&glutil, event);
-                glutil.camera->pos = newcam.pos;
-            }
-        }
 
         uint64_t dt = begin_frame(&glutil);
         clear_bg(BLACK);
