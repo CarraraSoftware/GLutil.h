@@ -38,9 +38,10 @@ uniform Light lights[MAX_LIGHTS];
 
 void main()
 {
+
     vec3 light_source = vec3(1.0, 1.0, 1.0);
     for (int i = 0; i < MAX_LIGHTS; i++) {
-        if ( i >= lights_count ) {
+        if ( i >= lights_count || length(vs_normal) < 0.001 ) {
             break;
         }
 
@@ -83,7 +84,7 @@ void main()
     if (has_texture == 1) {
         clr = texture(the_texture, vs_texture_pos);
     } else {
-        clr = vec4(1.0, 1.0, 1.0, 1.0);
+        clr = vec4(vs_color, 1.0f);
     }
 
     vec3 c = clr.xyz * light_source;
