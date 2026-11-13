@@ -1,34 +1,68 @@
-/* 
-* Most of the OpenGl initialization code was taken from:
-* @FROM: https://github.com/ColleagueRiley/OpenGL-Context-Creation
-* made by the author of
-* https://github.com/ColleagueRiley/RGFW 
-* 
-* with license:
-*
-*	RGFW 2.0.0-dev
+/*******************************
+ *  LICENSES AT BOTTOM OF FILE *
+ *******************************/
 
-* Copyright (C) 2022-26 Riley Mabb (@ColleagueRiley)
-*
-* libpng license
-*
-* This software is provided 'as-is', without any express or implied
-* warranty.  In no event will the authors be held liable for any damages
-* arising from the use of this software.
+//  DEPENDÊNCIAS ///////////////////////////////////////////////////////////////
+/*
+ESSE ARQUIVO NÃO É AUTO-CONTIDO (por enquanto).
+Por hora, esse header (glutil.h) depende de outras 3 header-only libs,
+que precisam estar presentes numa pasta chamada 'include'.
+Os três arquivos são:
+  vec.h          (https://github.com/CarraraSoftware/carrlib/blob/main/vec.h)
+  sv.h           (https://github.com/CarraraSoftware/carrlib/blob/main/sv.h)
+  stb_image.h    (https://github.com/nothings/stb/blob/master/stb_image.h)
 
-* Permission is granted to anyone to use this software for any purpose,
-* including commercial applications, and to alter it and redistribute it
-* freely, subject to the following restrictions:
-*
-* 1. The origin of this software must not be misrepresented; you must not
-*    claim that you wrote the original software. If you use this software
-*    in a product, an acknowledgment in the product documentation would be
-*    appreciated but is not required.
-* 2. Altered source versions must be plainly marked as such, and must not be
-*    misrepresented as being the original software.
-* 3. This notice may not be removed or altered from any source distribution.
-*
+Ou seja, algo assim:
+
+ <diretório do projeto>/
+  │
+  ├─ glutil.h
+  │
+  ├─ include/
+  │    │
+  │    ├─ vec.h
+  │    ├─ sv.h
+  │    ╰─ stb_image.h
+  │
+  ╰─ main.c (arquivo onde o glutil.h é incluído, ver exemplo abaixo)
+
 */
+////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+/* Exemplo mínimo:
+ *
+ * file:// *********************  main.c ***************************************
+ *
+ * #define GLUTIL_IMPLEMENTATION // stb_style header only
+ * #include "glutil.h"                                                           
+ *                                                                               
+ * int main(void) {                                                              
+ *     GLutil glutil = {0};                     // aloca na stack um GLutil
+ *     init(&glutil, 800, 600);                 // inicializa a struct que gerencia todo o estado da aplicação                                 
+ *     set_target_fps(&glutil, 60.0f);
+ *
+ *     for (;;) {
+ *         uint64_t dt = begin_frame(&glutil);  // processa todos os eventos do X11 e tudo mais que for necessário pra conseguir colocar os pixels na tela
+ *             clear_bg(BLACK);
+ *             circle(                          // desenhar um círcula usando o immediate_mode do OpenGL
+ *                 (Vec2f) { 100.0f, 100.0f },  //      centro do círculo             
+ *                 50,                          //      raio do círculo               
+ *                 COLOR( 255, 255, 255 )       //      cor do círculo                
+ *             );                                                                
+ *         end_frame(&glutil);                  // exibe os pixels (isto é, faz o swap dos buffers), atualiza o estado interno e qualquer outra coisa que precise antes do próximo frame
+ *     }                                                                         
+ *                                                                               
+ *     destroy(&glutil);                                                         
+ *     return 0;                                                                 
+ * }                                                                             
+ *
+ *
+ */
+
+
 
 #ifndef GLUTIL_H_
 #define GLUTIL_H_ 
@@ -51,21 +85,573 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "include/stb_image.h"
 
-#define CARR_VEC_FORCE_PREFIX
+// @NOTE: acho melhor forçar o prefixo somente durante os testes com o 
+//        GLutil.h por meio de uma compile flag (e.g. -DCARR_VEC_FORCE_PREFIX) 
+//        pra permitir que uma aplicação que usa o GLutil.h possa também usar o vec.h sem os prefixos
+// #define CARR_VEC_FORCE_PREFIX 
 #define CARR_VEC_IMPLEMENTATION
 #include "include/vec.h"
 
-#define CARR_SV_FORCE_PREFIX
+// @NOTE: exatamente a mesma coisa que a nota acima, testar com -DCARR_SV_FORCE_PREFIX,
+//        para permitir que os usuários escolham entre ter ou não o prefixo
 #define CARR_SV_IMPLEMENTATION
 #include "include/sv.h"
 
 
 
+
+
+///////////////////////////////////////////////////////////////////////////////
+
+
+
+/*******************************************************************************
+ *                                                                             *
+ *                        TYPE DEFINITIONS                                     *
+ *                                                                             *
+ ******************************************************************************/
+// Todos os tipos aqui declarados com o prefixo GLutil_ podem ser acessados sem
+// esse prefixo. O prefixo é incluído como um mecanismo que permita contornar 
+// situações de conflitos de nomes.
+
+
+/**********************************
+ *          CORES                 *
+ **********************************/
+
+// Definição de cor compátivel com a definição de outras libs, por exemplo, do raylib.  
+// O que é útil, pq dá pra integrar com essas libs, mas também, pq é possível 
+// CHUPINHAR o código deles heheheheh (checar licencas no final do arquivo)   
+typedef struct {
+    // 0 <= red, green, blue, alpha <= 255
+    unsigned char red;  
+    unsigned char green;
+    unsigned char blue; 
+    unsigned char alpha;
+} GLutil_Color; 
+                
+
+// Definição de cor compátivel com a utilizada no GLSL 
+typedef struct {
+//  0.0f <= r,g,b <= 1.0f.  
+    float r;
+    float g;
+    float b;
+    // @NOTE: adicionar alpha aqui?
+} GLutil_GLColor;
+
+
+// .
+// .
+// .
+// .
+
+
+/**********************************
+ * MATEMÁTICA | ALGEBRA LINEAR    *
+ **********************************/
+
+// vetores
+typedef struct  {
+    int x, y;
+} GLutil_Vec2i;
+
+typedef struct  {
+    float x, y;
+} GLutil_Vec2f;
+
+typedef struct {
+    float x, y, z;
+} GLutil_Vec3f;
+
+typedef struct {
+    float x, y, z, w;
+} GLutil_Vec4f;
+
+// matrizes
+typedef union {
+    float data[4];
+
+    GLutil_Vec2f rows[2];
+
+    struct {
+        // _[row][col]
+        float _11; float _12;
+        float _21; float _22;
+    };
+
+} GLutil_Mat2x2f;
+
+typedef GLutil_Mat2x2f GLutil_Mat2f;
+
+typedef struct {
+    union {
+        float data[9];
+
+        GLutil_Vec3f rows[3];
+
+        struct {
+            float _11; float _12; float _13;
+            float _21; float _22; float _23;
+            float _31; float _32; float _33;
+        };
+    };
+
+
+} GLutil_Mat3x3f;
+
+typedef GLutil_Mat3x3f GLutil_Mat3f;
+
+typedef struct {
+    union {
+        float data[16];
+
+        GLutil_Vec4f rows[4];
+
+        struct {
+            float _11; float _12; float _13; float _14;
+            float _21; float _22; float _23; float _24;
+            float _31; float _32; float _33; float _34;
+            float _41; float _42; float _43; float _44;
+        };  
+    };
+} GLutil_Mat4x4f;
+
+typedef GLutil_Mat4x4f GLutil_Mat4f;
+
+
+// quaternions
+typedef GLutil_Vec4f GLutil_Quaternion;
+
+
+// .
+// .
+// .
+// .
+
+
+/*************************
+ *       CAMERA          *
+ *************************/
+
+typedef struct {
+    GLutil_Vec3f front, right, up; 
+} GLutil_3DBasis;
+
+typedef struct  {
+    GLutil_Vec3f pos;
+    GLutil_Vec3f target;
+    GLutil_Vec3f up;
+
+    float fovX;
+    float near;
+    float far;
+} GLutil_Camera;
+
+
+// .
+// .
+// .
+// .
+
+
+/********************************
+*      SHADERS && 3D MODELS     *
+********************************/
+
+typedef enum {
+    GLUTIL_VERT_SHADER = GL_VERTEX_SHADER,
+    GLUTIL_FRAG_SHADER = GL_FRAGMENT_SHADER,
+} GLutil_ShaderType;
+
+
+typedef struct {
+    GLutil_Vec3f pos;
+
+    GLutil_GLColor color;
+
+    GLutil_Vec2f tex_pos;
+
+    GLutil_Vec3f normal;
+
+} GLutil_Vertex;
+
+
+typedef struct {
+    GLutil_Vertex* items;
+    size_t         len;
+    size_t         cap;
+} GLutil_Vertices;
+
+typedef struct {
+    unsigned int* items;
+    size_t        len;
+    size_t        cap;
+} GLutil_Faces;
+
+
+
+typedef struct {
+    GLutil_Vertices vertices;  // vertex data parsed from .obj file
+    GLutil_Faces    faces;     // face   data parsed from .obj file
+
+    GLuint vbo_id, ebo_id, vao_id;  // ids (or names?) returned by openGL when vertex data is loaded into the GPU
+
+
+    // @NOTE: 
+    // talvez esse campo deva ser interpretado como o shader padrão associado
+    // a essa model, mas através de um Vec<Shader> em algum lugar podemos
+    // permitir adicionar mais shaders dinamicamente
+    GLuint shader_program;          // id of compiled and linked shader program to use
+                                    // a value of -1 (4294967295), means there's no shader associated with this model 
+} GLutil_ObjData;
+
+typedef struct {
+    float    scale;
+    GLutil_Vec3f    world_pos;
+
+    GLutil_ObjData* geometry;
+    GLuint          texture_id;  // id to the texture_id returned by OpenGL when the texture data is loaded into the GPU
+                                 // a value of -1 (4294967295), means there's no texture associated with this model 
+} GLutil_Model;
+
+
+// .
+// .
+// .
+// .
+
+
+/*************************
+ *       INPUT           *
+ *************************/
+
+// a merda do X11...
+#define SPACE       'A'  // ????
+#define RIGHT_ARROW 114
+#define LEFT_ARROW  113
+#define DOWN_ARROW  116
+#define UP_ARROW    111
+
+
+typedef enum {
+    MOUSE_BUTTON_RIGHT     = 1, 
+    MOUSE_WHEEL_CLICK      = 2, 
+    MOUSE_BUTTON_LEFT      = 3, 
+    MOUSE_WHEEL_UP         = 4, 
+    MOUSE_WHEEL_DOWN       = 5, 
+    MOUSE_SIDE_BUTTON_UP   = 8, 
+    MOUSE_SIDE_BUTTON_DOWN = 9, 
+} X11_Codes;
+
+typedef struct {
+    bool         moved;
+    GLutil_Vec2i last_pos;
+    GLutil_Vec2i pos;
+} GLutil_MouseMove;
+
+typedef struct {
+    bool down:    1; // 'down'    significa que no frame anterior esse botão/tecla não estava apertado e agora está
+    bool up:      1; // 'up'      significa que no frame anterior esse botão/tecla estava apertado e agora não está mais
+    bool pressed: 1; // 'pressed' significa que esse botão/tecla está sendo apertado
+} GLutil_InputState;
+
+
+// @TODO: talvez refatorar input para um XMacro?
+typedef struct {
+    GLutil_InputState mouse_button_right;
+    GLutil_InputState mouse_button_left;
+    GLutil_MouseMove  mouse_movement;
+    
+    GLutil_InputState arrow_up;
+    GLutil_InputState arrow_down;
+    GLutil_InputState space_bar;
+} GLutil_Input;
+
+
+// .
+// .
+// .
+// .
+
+
+/*************************
+ *       LIGHTING        *
+ *************************/
+
+// Uma fonte pontual de luz. Usada no fragment shader.
+typedef struct {
+    float        intensity;
+    float        shine;
+    GLutil_Vec3f pos;
+    GLutil_Vec3f clr;
+} GLutil_PointLight;
+
+ // Array Dinâmico para armazenar todas as fontes pontuais de luz 
+typedef struct {
+    GLutil_PointLight* items;
+    size_t             len;
+    size_t             cap;
+} GLutil_PointLights; 
+
+
+// .
+// .
+// .
+// .
+
+
+/*******************************************************************************
+ *                        THE BIG FAT GLUTIL                                   *
+ *******************************************************************************/
+typedef struct GLutil {
+
+/** X11 STUFF **************/
+    Window       window;
+    Display*     display;
+    GLXContext   ctx;
+    XVisualInfo* vi;
+    GLXFBConfig  fbc;
+/** END OF X11 STUFF *******/
+
+    int winwidth;
+    int winheight;
+
+    uint64_t     prev_t_nanos;    // timestamp em nanosegundos do último frame
+    uint64_t     cur_t_nanos;     // timestamp em nanosegundos do frame atual
+    uint64_t     dt_nanos;        // delta time em nanosegundos entre os dois últimos frames
+    uint64_t     target_sleep_us; // quantidade de microsegundos de delay para atingir o FPS alvo
+
+    GLuint       current_vao ;      // @TODO: acho que nem uso isso daqui mais?
+    int          current_ebo_count; // @TODO: acho que nem uso isso daqui mais?
+
+    GLutil_Camera camera;
+    GLutil_Input  input;
+
+    GLutil_PointLights lights;
+} GLutil;
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+
+
+ 
+
+/*******************************************************************************
+ *                                                                             *
+ *                    FUNCTION FORWARD DECLARATIONS                            *
+ *                                                                             *
+ ******************************************************************************/
+// Todos as funções aqui declaradas com o prefixo GLutil_ podem ser acessadas sem
+// esse prefixo. O prefixo é incluído como um mecanismo que permita contornar 
+// situações de conflitos de nomes.
+
+void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h);              // inicializa Display, Window e o OpenGLContext. e mais alguns estados internos
+void GLutil_destroy(GLutil* glutil);                                           // desaloca e fecha todos os recursos alocados por GLutil.h
+
+// FRAME LOOP
+uint64_t GLutil_get_time_nanos(void);                                          // retorna o número de nanosegundos desde o UNIX epoch
+float    GLutil_get_time_secs(GLutil* glutil);                                 // retorna o número de segundos dedsde o UNIX epoch. @NOTE: esse função calcula o número de segundos com base no valor de nanosegundos armazenado na struct GLutil, que é atualizada com base no delta dos fraames, ao invés de fazer outra systemcall .
+uint64_t GLutil_frame_delta_nanos(GLutil *glutil);                             // quantidade de nanosegundos que se passou entre o último frame e o frame atual
+uint64_t GLutil_begin_frame(GLutil *glutil);                                   // deve ser chamada no ínicio de toda iteração do FRAME LOOP
+void     GLutil_clear_bg( GLutil_Color color );                                // colore a janela inteira com uma cor sólida
+void     GLutil_end_frame(GLutil *glutil);                                     // faz o swap dos buffers E atualiza o estado interno do GLutil (principalmente o delta entre frames)
+void     GLutil_present(GLutil* glutil);                                       // faz o swap dos buffers do opengl
+void     GLutil_set_target_fps(GLutil* glutil, float fps);                     // usa fps para calcular o delay entre frames como 1/fps e espera o delay somente se delay > 0
+void     GLutil_unlimited_fps(GLutil* glutil);                                 // coloca zero nanos de delay entre frames
+void     GLutil_update_input(GLutil* glutil);                                  // checa a file de eventos do X11 pra atualizar o estado do input armazenado na struct GLutil
+bool     GLutil_next_event(GLutil* glutil, XEvent* event);                     // consome o próximo evento na file de eventos do X11
+void     GLutil_check_gl_error_(int line, const char* file, const char* func); // @NOTE: essa função não foi feita pra ser usada diretamente, e sim por meio do macro GL_CHECK_ERRORS
+
+
+// api legado do OpenGL (immediate mode)
+void GLutil_circle(GLutil_Vec2f center, int radius, GLutil_Color color);       // desenha um círculo através de GL_TRIANGLE_FAN, o nível de precisão do círculo pode ser alterado pelo macro GLUTIL_CIRCLE_PRECISION
+void GLutil_line(GLutil_Vec2f a, GLutil_Vec2f b, GLutil_Color clr, float w);
+void GLutil_rect(GLutil_Vec2f topleft, float w, float h, GLutil_Color clr);  
+void GLutil_ortho2D(GLdouble left, GLdouble right, GLdouble top, GLdouble bottom);
+
+// vetores
+GLutil_Vec2f GLutil_Vec2f_add(GLutil_Vec2f a, GLutil_Vec2f b);
+GLutil_Vec2f GLutil_Vec2f_sub(GLutil_Vec2f a, GLutil_Vec2f b);
+float GLutil_Vec2f_sqlength(GLutil_Vec2f v);
+float GLutil_Vec2f_length(GLutil_Vec2f v);
+GLutil_Vec2f GLutil_Vec2f_rotccw(GLutil_Vec2f v, float theta);
+GLutil_Vec2f GLutil_Vec2f_rotcw(GLutil_Vec2f v, float theta);
+float GLutil_Vec2f_dot(GLutil_Vec2f a, GLutil_Vec2f b);
+GLutil_Vec2f GLutil_Vec2f_apply_mat2x2(GLutil_Vec2f v, GLutil_Mat2x2f A);
+GLutil_Vec2f GLutil_Vec2f_scale(GLutil_Vec2f v, float sx, float sy);
+
+GLutil_Vec3f GLutil_Vec3f_add(GLutil_Vec3f a, GLutil_Vec3f b);
+GLutil_Vec3f GLutil_Vec3f_sub(GLutil_Vec3f a, GLutil_Vec3f b);
+float GLutil_Vec3f_sqlength(GLutil_Vec3f v);
+float GLutil_Vec3f_length(GLutil_Vec3f v);
+GLutil_Vec3f GLutil_Vec3f_div(GLutil_Vec3f v, float d);
+GLutil_Vec3f GLutil_Vec3f_normalize(GLutil_Vec3f v);
+GLutil_Vec3f GLutil_Vec3f_scale(GLutil_Vec3f v, float s);
+float GLutil_Vec3f_dot(GLutil_Vec3f a, GLutil_Vec3f b);
+GLutil_Vec3f GLutil_Vec3f_cross(GLutil_Vec3f a, GLutil_Vec3f b);
+float GLutil_Vec3f_angle_between(GLutil_Vec3f a, GLutil_Vec3f b);
+GLutil_Vec3f GLutil_Vec3f_apply_mat3x3(GLutil_Vec3f v, GLutil_Mat3x3f A);
+GLutil_Vec3f GLutil_Vec3f_rotate_x(GLutil_Vec3f v, float angle);
+GLutil_Vec3f GLutil_Vec3f_rotate_y(GLutil_Vec3f v, float angle);
+GLutil_Vec3f GLutil_Vec3f_rotate_z(GLutil_Vec3f v, float angle);
+GLutil_Vec3f GLutil_Vec3f_rotate_around_axis(GLutil_Vec3f v, GLutil_Vec3f R, float angle); // rotação usando multiplicação de matrizes
+GLutil_Vec3f GLutil_Vec3f_rotate(GLutil_Vec3f v, float angle, GLutil_Vec3f axis);          // rotação usando quaternions
+
+
+GLutil_Vec4f GLutil_Vec4f_apply_mat4x4(GLutil_Vec4f v, GLutil_Mat4x4f A);
+float GLutil_Vec4f_dot(GLutil_Vec4f a, GLutil_Vec4f b);
+
+// matrizes
+GLutil_Mat2x2f GLutil_Mat2x2f_mul(GLutil_Mat2x2f A, GLutil_Mat2x2f B);
+GLutil_Mat3x3f GLutil_Mat3x3f_mul(GLutil_Mat3x3f A, GLutil_Mat3x3f B);
+GLutil_Mat4x4f GLutil_Mat4x4f_mul(GLutil_Mat4x4f a, GLutil_Mat4x4f b);
+
+// quaternions
+GLutil_Quaternion GLutil_quat_from_angle_axis(float angle, GLutil_Vec3f axis);
+GLutil_Quaternion GLutil_quat_from_vec3f(GLutil_Vec3f v);
+int               GLutil_quat_sqlength(GLutil_Quaternion q);
+GLutil_Quaternion GLutil_quat_conjugate(GLutil_Quaternion q);
+GLutil_Quaternion GLutil_quat_scale(GLutil_Quaternion q, float s);
+GLutil_Quaternion GLutil_quat_div_scalar(GLutil_Quaternion v, float d);
+GLutil_Quaternion GLutil_quat_mul(GLutil_Quaternion a, GLutil_Quaternion b);
+GLutil_Quaternion GLutil_quat_inverse(GLutil_Quaternion q);
+
+
+// CAMERA
+GLutil_Mat3x3f GLutil_model_matrix(GLutil_Camera cam);
+GLutil_Mat4x4f GLutil_view_matrix(GLutil_Camera cam);
+GLutil_Mat4x4f GLutil_projection_matrix(GLutil_Camera cam, float aspectRatio); 
+// @TODO: pensar sobre onde armazenar as informações de width e height da janela, 
+//        de maneira a opcionalmente não precisar passar o argumento aspectRatio 
+// @NOTE: talvez salvar aspectRatio na própria Camera?
+
+GLutil_Vec3f GLutil_camera_direction(GLutil_Camera* camera);
+GLutil_Vec3f GLutil_camera_right(GLutil_Camera* camera);
+GLutil_Vec3f GLutil_camera_up(GLutil_Camera* camera);
+GLutil_3DBasis GLutil_camera_basis(GLutil_Camera* camera);
+GLutil_Camera GLutil_camera_orbit(GLutil_Camera camera, float theta, float phi);
+
+// SHADERS
+GLuint GLutil_load_shader(const char* name, GLutil_ShaderType type);
+void GLutil_default_shaders(GLutil_ObjData* obj);
+
+
+// MODELS, OBJ E TEXTURES
+GLutil_ObjData GLutil_load_obj_file(const char* file_path);
+void GLutil_load_obj_to_GPU(GLutil_ObjData* obj);
+
+GLutil_Model GLutil_make_model();
+GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
+void GLutil_render_model(GLutil* glutil, GLutil_Model* model);
+
+GLuint GLutil_load_texture(const char* texture_name);
+
+void GLutil_wireframe_mode();
+GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
+ 
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+
+ 
+ 
+
+/*******************************************************************************
+ *                                                                             *
+ *                        MACROS ÚTEIS                                         *
+ *                                                                             *
+ ******************************************************************************/
+
+#define GLUTIL_RAD2DEG(angle) ((angle) * 180.0f / M_PI)
+#define GLUTIL_MAP(x, src_min, src_max, dst_min, dst_max) ( (dst_min) + ( ( ( (x) - (src_min) ) * ( (dst_max) - (dst_min) ) ) / ( (src_max) - (src_min) ) ))
+#define GLUTIL_RAND(min, max) MAP((float)rand(), 0.0f, (float)RAND_MAX, (float)(min), (float)(max))
+
+#define GLUTIL_COLOR(r, g, b) (Color){ .red = (r), .green = (g), .blue = (b), .alpha = 255 }
+#define GLUTIL_BLACK COLOR(0, 0, 0)
+
+#define GLUTIL_PRINT_ERROR(msg) fprintf(stderr, "%d:%s:%s ERROR: %s", __LINE__, __FILE__, __FUNCTION__, msg)
+#define GLUTIL_CHECK_GL_ERROR() GLutil_check_gl_error_(__LINE__, __FILE__, __FUNCTION__)
+
+/*
+#define ALL_INPUT_MASKS ( \
+        KeyPressMask       | KeyReleaseMask         | ButtonPressMask          \
+      | ButtonReleaseMask  | EnterWindowMask        | LeaveWindowMask          \
+      | PointerMotionMask  | PointerMotionHintMask  | Button1MotionMask        \
+      | Button2MotionMask  | Button3MotionMask      | Button4MotionMask        \
+      | Button5MotionMask  | ButtonMotionMask       | KeymapStateMask          \
+      | ExposureMask       | VisibilityChangeMask   | StructureNotifyMask      \
+      | ResizeRedirectMask | SubstructureNotifyMask | SubstructureRedirectMask \
+      | FocusChangeMask    | PropertyChangeMask     | ColormapChangeMask       \
+      | OwnerGrabButtonMask )
+*/
+
+// @TODO: organizar melhor esseas flags de eventos
+#define ALL_INPUT_MASKS ( \
+        KeyPressMask       | KeyReleaseMask         | ButtonPressMask          \
+      | ButtonReleaseMask  | EnterWindowMask        | LeaveWindowMask          \
+      | PointerMotionMask  | Button1MotionMask        \
+      | Button2MotionMask  | Button3MotionMask      | Button4MotionMask        \
+      | Button5MotionMask  | ButtonMotionMask       | KeymapStateMask          \
+      | ExposureMask       | VisibilityChangeMask   | StructureNotifyMask      \
+      | ResizeRedirectMask | SubstructureNotifyMask | SubstructureRedirectMask \
+      | FocusChangeMask    | PropertyChangeMask     | ColormapChangeMask       \
+      | OwnerGrabButtonMask )
+ 
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+
+ 
+ 
+ 
 /*******************************************************************************
  *                                                                             *
  *                        NO PREFIX DEFINITIONS                                *
  *                                                                             *
  ******************************************************************************/
+// Todos os tipos e funções declaradas acima são repetidas aqui, porém sem o 
+// prefixo GLutil_. Dessa forma é possível ter um controle minucioso de quais
+// funções devem ser realmente acessadas com o prefixo, no caso de um conflito de
+// nomes. 
+//
+// Por exemplo, suponha que no seu projeto já exista um tipo com o nome 'Camera'.
+// Ao fazer o include do GLutil:
+//      ```
+//      #define GLUTIL_IMPLEMENTATION
+//      #include "glutil.h"
+//      ```
+// você acabaria por incluir também a linha abaixo que define:
+//      ```
+//      #define GLutil_Camera Camera
+//      ```
+// o que geraria um conflito no nome Camera.
+//
+// Isso poderia ser contornado forçando o uso de prefixo em todos os tipos e todas
+// as funções:
+//
+//      ```
+//      #define GLUTIL_FORCE_PREFIX
+//      #define GLUTIL_IMPLEMENTATION
+//      #include "glutil.h"
+//      ```
+// mas essa não é uma solução ideal, pois forçaria o uso do prefixo em tipos e 
+// funções que não estão envolvidas em nehuma forma de conflito. Não há motivos
+// para forçar o uso de GLutil_Vec3f se não há conflito com Vec3f.
+//
+// Uma solução melhor, seria descartar a versão sem prefixo somente do elemento
+// que realmente está envolvido no conflito, neste exemplo, Camera:
+//      ```
+//      #define GLUTIL_IMPLEMENTATION
+//      #include "glutil.h"
+//      #undef Camera
+//      ```
+// Dessa forma, não haveria conflito com esse nome específico, mas também seria
+// possivel acessar todos os outros tipos e funções sem o prefixo GLutil.
 
 
 #ifndef GLUTIL_FORCE_PREFIX
@@ -88,7 +674,6 @@
 #define Mat3f    GLutil_Mat3f
 #define Mat4x4f  GLutil_Mat4x4f
 #define Mat4f    GLutil_Mat4f
-
 
 #define Camera    GLutil_Camera
 #define _3DBasis  GLutil_3DBasis
@@ -192,375 +777,19 @@
 #define camera_basis      GLutil_camera_basis
 #define camera_orbit      GLutil_camera_orbit
 
-
 #endif // GLUTIL_INCLUDE_PREFIX
 
-
-#define GLUTIL_RAD2DEG(angle) ((angle) * 180.0f / M_PI)
-#define GLUTIL_MAP(x, src_min, src_max, dst_min, dst_max) ( (dst_min) + ( ( ( (x) - (src_min) ) * ( (dst_max) - (dst_min) ) ) / ( (src_max) - (src_min) ) ))
-#define GLUTIL_RAND(min, max) MAP((float)rand(), 0.0f, (float)RAND_MAX, (float)(min), (float)(max))
-
-#define GLUTIL_COLOR(r, g, b) (Color){ .red = (r), .green = (g), .blue = (b), .alpha = 255 }
-#define GLUTIL_BLACK COLOR(0, 0, 0)
-
-#define GLUTIL_PRINT_ERROR(msg) fprintf(stderr, "%d:%s:%s ERROR: %s", __LINE__, __FILE__, __FUNCTION__, msg)
-#define GLUTIL_CHECK_GL_ERROR() GLutil_check_gl_error_(__LINE__, __FILE__, __FUNCTION__)
-
-/*
-#define ALL_INPUT_MASKS ( \
-        KeyPressMask       | KeyReleaseMask         | ButtonPressMask          \
-      | ButtonReleaseMask  | EnterWindowMask        | LeaveWindowMask          \
-      | PointerMotionMask  | PointerMotionHintMask  | Button1MotionMask        \
-      | Button2MotionMask  | Button3MotionMask      | Button4MotionMask        \
-      | Button5MotionMask  | ButtonMotionMask       | KeymapStateMask          \
-      | ExposureMask       | VisibilityChangeMask   | StructureNotifyMask      \
-      | ResizeRedirectMask | SubstructureNotifyMask | SubstructureRedirectMask \
-      | FocusChangeMask    | PropertyChangeMask     | ColormapChangeMask       \
-      | OwnerGrabButtonMask )
-*/
-
-#define ALL_INPUT_MASKS ( \
-        KeyPressMask       | KeyReleaseMask         | ButtonPressMask          \
-      | ButtonReleaseMask  | EnterWindowMask        | LeaveWindowMask          \
-      | PointerMotionMask  | Button1MotionMask        \
-      | Button2MotionMask  | Button3MotionMask      | Button4MotionMask        \
-      | Button5MotionMask  | ButtonMotionMask       | KeymapStateMask          \
-      | ExposureMask       | VisibilityChangeMask   | StructureNotifyMask      \
-      | ResizeRedirectMask | SubstructureNotifyMask | SubstructureRedirectMask \
-      | FocusChangeMask    | PropertyChangeMask     | ColormapChangeMask       \
-      | OwnerGrabButtonMask )
-
-/*******************************************************************************
- *                                                                             *
- *                        TYPE DEFINITIONS                                     *
- *                                                                             *
- ******************************************************************************/
-
-
-
-typedef struct {
-    unsigned char red;  
-    unsigned char green;
-    unsigned char blue; 
-    unsigned char alpha;
-} GLutil_Color;
-
-typedef struct  {
-    int x, y;
-} GLutil_Vec2i;
-
-typedef struct  {
-    float x, y;
-} GLutil_Vec2f;
-
-
-typedef struct {
-    float x, y, z;
-} GLutil_Vec3f;
-
-typedef struct {
-    float x, y, z, w;
-} GLutil_Vec4f;
-
-typedef union {
-    float data[4];
-
-    Vec2f rows[2];
-
-    struct {
-        // _[row][col]
-        float _11; float _12;
-        float _21; float _22;
-    };
-
-} GLutil_Mat2x2f;
-
-typedef GLutil_Mat2x2f GLutil_Mat2f;
-
-typedef struct {
-    union {
-        float data[9];
-
-        Vec3f rows[3];
-
-        struct {
-            float _11; float _12; float _13;
-            float _21; float _22; float _23;
-            float _31; float _32; float _33;
-        };
-    };
-
-
-} GLutil_Mat3x3f;
-
-typedef GLutil_Mat3x3f GLutil_Mat3f;
-
-typedef struct {
-    union {
-        float data[16];
-
-        Vec4f rows[4];
-
-        struct {
-            float _11; float _12; float _13; float _14;
-            float _21; float _22; float _23; float _24;
-            float _31; float _32; float _33; float _34;
-            float _41; float _42; float _43; float _44;
-        };  
-    };
-} GLutil_Mat4x4f;
-
-typedef GLutil_Mat4x4f GLutil_Mat4f;
-
-typedef enum {
-    GLUTIL_VERT_SHADER = GL_VERTEX_SHADER,
-    GLUTIL_FRAG_SHADER = GL_FRAGMENT_SHADER,
-} GLutil_ShaderType;
-
-
-#define GLutil_Vertex_XYZ_size 3
-typedef struct {
-    Vec3f pos;
-
-    struct {
-        float r;
-        float g;
-        float b;
-    } color;
-
-
-    Vec2f tex_pos;
-
-} GLutil_Vertex;
-
-
-typedef struct {
-    GLutil_Vertex* items;
-    size_t         len;
-    size_t         cap;
-} GLutil_Vertices;
-
-typedef struct {
-    unsigned int* items;
-    size_t        len;
-    size_t        cap;
-} GLutil_Faces;
-
-
-typedef struct {
-    Vec3f front, right, up;
-} GLutil_3DBasis;
-
-typedef struct  {
-    GLutil_Vec3f pos;
-    GLutil_Vec3f target;
-    GLutil_Vec3f up;
-
-    float fovX;
-    float near;
-    float far;
-} GLutil_Camera;
-
-typedef struct {
-    GLutil_Vertices vertices;  // vertex data parsed from .obj file
-    GLutil_Faces    faces;     // face   data parsed from .obj file
-
-    GLuint vbo_id, ebo_id, vao_id;  // ids (or names?) returned by openGL when vertex data is loaded into the GPU
-
-
-    // @NOTE: 
-    // talvez esse campo deva ser interpretado como o shader padrão associado
-    // a essa model, mas através de um Vec<Shader> em algum lugar podemos
-    // permitir adicionar mais shaders dinamicamente
-    GLuint shader_program;          // id of compiled and linked shader program to use
-                                    // a value of -1 (4294967295), means there's no shader associated with this model 
-} GLutil_ObjData;
-
-typedef struct {
-    float    scale;
-    Vec3f    world_pos;
-
-    GLutil_ObjData* geometry;
-    GLuint           texture_id;  // id to the texture_id returned by OpenGL when the texture data is loaded into the GPU
-                                  // a value of -1 (4294967295), means there's no texture associated with this model 
-} GLutil_Model;
-
-
-
-// a merda X11...
-#define RIGHT_ARROW 114
-#define LEFT_ARROW  113
-#define DOWN_ARROW  116
-#define UP_ARROW    111
-
-typedef enum {
-    MOUSE_BUTTON_RIGHT     = 1, 
-    MOUSE_WHEEL_CLICK      = 2, 
-    MOUSE_BUTTON_LEFT      = 3, 
-    MOUSE_WHEEL_UP         = 4, 
-    MOUSE_WHEEL_DOWN       = 5, 
-    MOUSE_SIDE_BUTTON_UP   = 8, 
-    MOUSE_SIDE_BUTTON_DOWN = 9, 
-} X11_Codes;
-
-typedef struct {
-    bool  moved;
-    GLutil_Vec2i last_pos;
-    GLutil_Vec2i pos;
-} GLutil_MouseMove;
-
-typedef struct {
-    bool down:    1;
-    bool up:      1;
-    bool pressed: 1;
-} GLutil_InputState;
-
-
-typedef struct {
-    GLutil_InputState mouse_button_right;
-    GLutil_InputState mouse_button_left;
-    GLutil_MouseMove  mouse_movement;
-    
-    GLutil_InputState arrow_up;
-    GLutil_InputState arrow_down;
-} GLutil_Input;
-
-
-/*******************************************************************************
- *                        THE BIG FAT GLUTIL                                                     *
- *******************************************************************************/
-typedef struct GLutil {
-    Window       window;
-    Display*     display;
-    GLXContext   ctx;
-    XVisualInfo* vi;
-    GLXFBConfig  fbc;
-
-    int winwidth;
-    int winheight;
-
-
-    uint64_t     prev_t_nanos;    // timestamp em nanosegundos do último frame
-    uint64_t     cur_t_nanos;     // timestamp em nanosegundos do frame atual
-    uint64_t     dt_nanos;        // delta time em nanosegundos entre os dois últimos frames
-    uint64_t     target_sleep_us; // quantidade de microsegundos de delay para atingir o FPS alvo
-
-    GLuint       current_vao ;
-    int          current_ebo_count;
-
-    GLutil_Camera camera;
-    GLutil_Input  input;
-} GLutil;
-
-
-
-
-
-/*******************************************************************************
- *                                                                             *
- *                    FUNCTION FORWARD DECLARATIONS                            *
- *                                                                             *
- ******************************************************************************/
-
-void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h);            // inicializa Display, Window e o OpenGLContext. e mais alguns estados internos
-void GLutil_destroy(GLutil* glutil);                                         // desaloca e fecha todos os recursos alocados por GLutil.h
-
-
-// api legado do OpenGL
-void GLutil_circle(GLutil_Vec2f center, int radius, GLutil_Color color);     // desenha um círculo através de GL_TRIANGLE_FAN, o nível de precisão do círculo pode ser alterado pelo macro GLUTIL_CIRCLE_PRECISION
-void GLutil_line(GLutil_Vec2f a, GLutil_Vec2f b, GLutil_Color clr, float w);
-void GLutil_rect(GLutil_Vec2f topleft, float w, float h, GLutil_Color clr);  
-void GLutil_ortho2D(GLdouble left, GLdouble right, GLdouble top, GLdouble bottom);
-
-GLutil_Vec2f GLutil_Vec2f_add(GLutil_Vec2f a, GLutil_Vec2f b);
-GLutil_Vec2f GLutil_Vec2f_sub(GLutil_Vec2f a, GLutil_Vec2f b);
-float GLutil_Vec2f_sqlength(GLutil_Vec2f v);
-float GLutil_Vec2f_length(GLutil_Vec2f v);
-GLutil_Vec2f GLutil_Vec2f_rotccw(GLutil_Vec2f v, float theta);
-GLutil_Vec2f GLutil_Vec2f_rotcw(GLutil_Vec2f v, float theta);
-float GLutil_Vec2f_dot(GLutil_Vec2f a, GLutil_Vec2f b);
-GLutil_Vec2f GLutil_Vec2f_apply_mat2x2(GLutil_Vec2f v, Mat2x2f A);
-GLutil_Vec2f GLutil_Vec2f_scale(GLutil_Vec2f v, float sx, float sy);
-
-
-GLutil_Vec3f GLutil_Vec3f_add(GLutil_Vec3f a, GLutil_Vec3f b);
-GLutil_Vec3f GLutil_Vec3f_sub(GLutil_Vec3f a, GLutil_Vec3f b);
-float GLutil_Vec3f_sqlength(GLutil_Vec3f v);
-float GLutil_Vec3f_length(GLutil_Vec3f v);
-GLutil_Vec3f GLutil_Vec3f_div(GLutil_Vec3f v, float d);
-GLutil_Vec3f GLutil_Vec3f_normalize(GLutil_Vec3f v);
-GLutil_Vec3f GLutil_Vec3f_scale(GLutil_Vec3f v, float s);
-float GLutil_Vec3f_dot(GLutil_Vec3f a, GLutil_Vec3f b);
-GLutil_Vec3f GLutil_Vec3f_cross(GLutil_Vec3f a, GLutil_Vec3f b);
-float GLutil_Vec3f_angle_between(GLutil_Vec3f a, GLutil_Vec3f b);
-GLutil_Vec3f GLutil_Vec3f_apply_mat3x3(GLutil_Vec3f v, Mat3x3f A);
-GLutil_Vec3f GLutil_Vec3f_rotate_x(GLutil_Vec3f v, float angle);
-GLutil_Vec3f GLutil_Vec3f_rotate_y(GLutil_Vec3f v, float angle);
-GLutil_Vec3f GLutil_Vec3f_rotate_z(GLutil_Vec3f v, float angle);
-GLutil_Vec3f GLutil_Vec3f_rotate_around_axis(GLutil_Vec3f v, GLutil_Vec3f R, float angle);
-
-GLutil_Vec4f GLutil_Vec4f_apply_mat4x4(GLutil_Vec4f v, Mat4x4f A);
-float GLutil_Vec4f_dot(GLutil_Vec4f a, GLutil_Vec4f b);
-
-GLutil_Mat2x2f GLutil_Mat2x2f_mul(GLutil_Mat2x2f A, GLutil_Mat2x2f B);
-GLutil_Mat3x3f GLutil_Mat3x3f_mul(GLutil_Mat3x3f A, GLutil_Mat3x3f B);
-GLutil_Mat4x4f GLutil_Mat4x4f_mul(GLutil_Mat4x4f a, GLutil_Mat4x4f b);
-
-void GLutil_check_gl_error_(int line, const char* file, const char* func);
-
-// FRAME LOOP
-uint64_t GLutil_get_time_nanos(void);
-uint64_t GLutil_frame_delta_nanos(GLutil *glutil);
-uint64_t GLutil_begin_frame(GLutil *glutil);
-void GLutil_clear_bg( Color color );
-void GLutil_end_frame(GLutil *glutil);                 // faz o swap dos buffers E atualiza o estado interno do GLutil (principalmente o delta entre frames)
-void GLutil_present(GLutil* glutil);                   // faz o swap dos buffers do opengl
-void GLutil_set_target_fps(GLutil* glutil, float fps); // usa fps para calcular o delay entre frames como 1/fps e espera o delay somente se delay > 0
-void GLutil_unlimited_fps(GLutil* glutil);             // coloca zero nanos de delay entre frames
-void GLutil_update_input(GLutil* glutil);
-bool GLutil_next_event(GLutil* glutil, XEvent* event);
-float GLutil_t_secs(GLutil* glutil);
-
-// CAMERA
-GLutil_Mat3x3f GLutil_model_matrix(GLutil_Camera cam);
-GLutil_Mat4x4f GLutil_view_matrix(GLutil_Camera cam);
-GLutil_Mat4x4f GLutil_projection_matrix(GLutil_Camera cam, float aspectRatio); 
-// @TODO: pensar sobre onde armazenar as informações de width e height da janela, 
-//        de maneira a opcionalmente não precisar passar o argumento aspectRatio 
-// @NOTE: talvezz salvar aspectRatio na própria Camera?
-
-GLutil_Vec3f GLutil_camera_direction(GLutil_Camera* camera);
-GLutil_Vec3f GLutil_camera_right(GLutil_Camera* camera);
-GLutil_Vec3f GLutil_camera_up(GLutil_Camera* camera);
-GLutil_3DBasis GLutil_camera_basis(GLutil_Camera* camera);
-GLutil_Camera GLutil_camera_orbit(GLutil_Camera camera, float theta, float phi);
-
-// SHADERS
-GLuint GLutil_load_shader(const char* name, GLutil_ShaderType type);
-void GLutil_default_shaders(GLutil_ObjData* obj);
-
-
-// MODELS, OBJ E TEXTURES
-GLutil_ObjData GLutil_load_obj_file(const char* file_path);
-void GLutil_load_obj_to_GPU(GLutil_ObjData* obj);
-
-GLutil_Model GLutil_make_model();
-GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
-void GLutil_render_model(GLutil* glutil, GLutil_Model* model);
-
-GLuint GLutil_load_texture(const char* texture_name);
-
-void GLutil_wireframe_mode();
-GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
 
 
 
 #endif // GLUTIL_H_
-
-
-
-
 /**************************** FIM DO HEADER ***********************************/
+
+
+
+
+
+
 #ifdef GLUTIL_IMPLEMENTATION
 
 #define GLUTIL_DEFAULT_CAM_FOV  90.0f
@@ -581,16 +810,6 @@ GLutil_Camera GLUTIL_DEFAULT_CAMERA = {
 
 static const char* DEFAULT_VERT_SHADER_PATH = "./shaders/default_vs.glsl";
 static const char* DEFAULT_FRAG_SHADER_PATH = "./shaders/default_fs.glsl";
-
-// const char* GL_ERROR_NAMES[] = {
-//     [0] = "GL_NO_ERROR ",
-//     [0x0500] = "GL_INVALID_ENUM",
-//     [0x0501] = "GL_INVALID_VALUE",
-//     [0x0502] = "GL_INVALID_OPERATION",
-//     [0x0503] = "GL_STACK_OVERFLOW",
-//     [0x0504] = "GL_STACK_UNDERFLOW",
-//     [0x0505] = "GL_OUT_OF_MEMORY",
-// };
 
 
 const char* INPUT_TYPE_NAMES[] = {
@@ -634,6 +853,7 @@ const char* INPUT_TYPE_NAMES[] = {
 
 
 /*******************************************************************************
+*                                                                              *
 *      TABELA DE XMACRO PARA FUNÇÕES CARREGADAS DURANTE O RUNTIME              *
 *                                                                              *
 ******************************************************************************/ 
@@ -664,8 +884,10 @@ const char* INPUT_TYPE_NAMES[] = {
    X( glUniform1i,                void,         GLint location, GLint v0                                                                             ) \
    X( glUniform1f,                void,         GLint location, GLfloat v0                                                                           ) \
    X( glUniform3fv,               void,         GLint location, GLsizei count, const GLfloat* value                                                  ) \
+   X( glUniform4fv,               void,         GLint location, GLsizei count, const GLfloat* value                                                  ) \
    X( glUniformMatrix3fv,         void,         GLint location, GLsizei count, GLboolean transpose, const GLfloat* value                             ) \
-   X( glUniformMatrix4fv,         void,         GLint location, GLsizei count, GLboolean transpose, const GLfloat* value                             )
+   X( glUniformMatrix4fv,         void,         GLint location, GLsizei count, GLboolean transpose, const GLfloat* value                             ) \
+   X( glUniformMatrix2x3fv,       void,         GLint location, GLsizei count, GLboolean transpose, const GLfloat* value                             )
     
    // X( glGenTextures,              void,         GLsizei n, GLuint* textures                                                                          )
       
@@ -848,6 +1070,9 @@ void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h)
     glutil->camera = GLUTIL_DEFAULT_CAMERA;
     glutil->input  = (GLutil_Input){0};
 
+    glutil->lights = (GLutil_PointLights){};
+    carr_vec_init(&glutil->lights);
+
     glutil->cur_t_nanos  = 0;
     glutil->prev_t_nanos = 0;
     glutil->dt_nanos     = 0;
@@ -973,6 +1198,8 @@ float GLutil_t_secs(GLutil* glutil)
 /*******************************************************************************
  *                     VETORES E ALGEBRA LINEAR                                *
  *******************************************************************************/
+
+// vetores
 
 GLutil_Vec2i GLutil_Vec2i_add(GLutil_Vec2i a, GLutil_Vec2i b) 
 {
@@ -1309,6 +1536,7 @@ GLutil_Vec4f GLutil_Vec4f_apply_mat4x4(GLutil_Vec4f v, Mat4x4f A)
 }
 
 
+// matrizes
 GLutil_Mat2x2f GLutil_Mat2x2f_mul(GLutil_Mat2x2f A, GLutil_Mat2x2f B)
 {
     //                                    / row_0  /  / col_0  /          / row_0  /  / col_1  /  
@@ -1362,6 +1590,96 @@ GLutil_Mat4x4f GLutil_Mat4x4f_mul(GLutil_Mat4x4f A, GLutil_Mat4x4f B)
     return m;
 }
 
+
+// quaternions
+GLutil_Quaternion GLutil_quat_from_angle_axis(float angle, GLutil_Vec3f axis)
+{
+    GLutil_Quaternion quat;
+    float s = sinf(angle);
+    float c = cosf(angle);
+
+    quat.w = c;
+    quat.x = s * axis.x;
+    quat.y = s * axis.y;
+    quat.z = s * axis.z;
+    return quat;
+}
+
+GLutil_Quaternion GLutil_quat_from_vec3f(GLutil_Vec3f v)
+{
+    return (GLutil_Quaternion) { .w = 0.0f, .x = v.x, .y = v.y, .z = v.z };
+}
+
+int GLutil_quat_sqlength(GLutil_Quaternion q)
+{
+    return (q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w);
+}
+
+GLutil_Quaternion GLutil_quat_conjugate(GLutil_Quaternion q)
+{
+    return (GLutil_Quaternion) { .x = -q.x, .y = -q.y, .z = -q.z, .w = q.w };
+}
+
+GLutil_Quaternion GLutil_quat_scale(GLutil_Quaternion q, float s)
+{
+    return (GLutil_Quaternion) {
+        .w = q.w * s,
+        .x = q.x * s,
+        .y = q.y * s, 
+        .z = q.z * s,
+    };
+}
+
+GLutil_Quaternion GLutil_quat_div_scalar(GLutil_Quaternion v, float d)
+{
+    if ( d == 0.0f ) {
+        printf("[WARNING] quat_div_scalar: Attempt to divide by 0. returning original quaternion without changes.\n");
+        return v;
+    }
+    float s = 1.0f / d;
+    return GLutil_quat_scale(v, s);
+}
+
+GLutil_Quaternion GLutil_quat_mul(GLutil_Quaternion a_, GLutil_Quaternion b_)
+{
+// @FROM: https://en.wikipedia.org/wiki/GLutil_Quaternions_and_spatial_rotation#GLutil_Quaternions
+    float a = a_.w;
+    float b = a_.x;
+    float c = a_.y;
+    float d = a_.z;
+    float e = b_.w;
+    float f = b_.x;
+    float g = b_.y;
+    float h = b_.z;
+
+    GLutil_Quaternion q = {0};
+
+    q.w = (a*e - b*f - c*g - d*h);
+    q.x = (a*f + b*e + c*h - d*g);
+    q.y = (a*g - b*h + c*e + d*f);
+    q.z = (a*h + b*g - c*f + d*e);
+    return q;
+}
+
+
+GLutil_Quaternion GLutil_quat_inverse(GLutil_Quaternion q)
+{
+    return GLutil_quat_div_scalar(GLutil_quat_conjugate(q), GLutil_quat_sqlength(q));
+}
+
+GLutil_Vec3f GLutil_Vec3f_rotate(GLutil_Vec3f v, float angle, GLutil_Vec3f axis)
+{
+    GLutil_Quaternion v_quat   = GLutil_quat_from_vec3f(v);
+    GLutil_Quaternion q        = GLutil_quat_from_angle_axis(angle/2.0f, axis);
+    GLutil_Quaternion qinv     = GLutil_quat_from_angle_axis(-angle/2.0f, axis);
+    GLutil_Quaternion left_mul = GLutil_quat_mul(q, v_quat);
+    GLutil_Quaternion result   = GLutil_quat_mul(left_mul, qinv);
+    return (GLutil_Vec3f){ 
+        .x = result.x,
+        .y = result.y,
+        .z = result.z 
+    };
+}
 
 
 /*******************************************************************************
@@ -1611,6 +1929,8 @@ GLutil_Camera GLutil_camera_orbit(GLutil_Camera camera, float theta, float phi)
  ******************************************************************************/
 void GLutil_update_input(GLutil* glutil)
 {
+    glutil->input.space_bar.down = false;
+
     glutil->input.arrow_up.down = false;
     glutil->input.arrow_down.down = false;
 
@@ -1620,11 +1940,16 @@ void GLutil_update_input(GLutil* glutil)
     glutil->input.mouse_movement.moved = false;
     glutil->input.mouse_movement.last_pos = glutil->input.mouse_movement.pos;
 
+
     while (XPending(glutil->display)) {
         XEvent event;
         XNextEvent(glutil->display, &event);
 
         if (event.type == KeyPress) {
+            if (event.xkey.keycode == SPACE) {
+                glutil->input.space_bar.down    = true;
+                glutil->input.space_bar.pressed = true;
+            }
             if (event.xkey.keycode == UP_ARROW) {
                 glutil->input.arrow_up.down    = true;
                 glutil->input.arrow_up.pressed = true;
@@ -1636,6 +1961,10 @@ void GLutil_update_input(GLutil* glutil)
         }
 
         if (event.type == KeyRelease) {
+            if (event.xkey.keycode == SPACE) {
+                glutil->input.space_bar.down    = false;
+                glutil->input.space_bar.pressed = false;
+            }
             if (event.xkey.keycode == UP_ARROW) {
                 glutil->input.arrow_up.down    = false;
                 glutil->input.arrow_up.pressed = false;
@@ -1703,6 +2032,12 @@ typedef struct {
     size_t cap;
 } VecFloats;
 
+typedef struct {
+    GLutil_Vec3f* items;
+    size_t        len;
+    size_t        cap;
+} Normals;
+
 
 ObjData GLutil_load_obj_file(const char* file_path)
 {
@@ -1714,7 +2049,6 @@ ObjData GLutil_load_obj_file(const char* file_path)
     Faces faces = {0};
     carr_vec_init(&faces);
 
-
     CarrStringBuilder sb = carr_sb_from_file(file_path);
     if (sb.data == NULL) exit(1);
     CarrStringView file = carr_sv_from_sb(sb);
@@ -1725,11 +2059,17 @@ ObjData GLutil_load_obj_file(const char* file_path)
     VecFloats vts = {0};  // temp vec for textures coordinates
     carr_vec_init(&vts);
 
+    Normals vns = {0};  // temp vec for normals
+    carr_vec_init(&vns);
+
     Faces v_idxs = {0};   // temp vec for vertices indexes for faces
     carr_vec_init(&v_idxs);
 
     Faces vt_idxs = {0};  // temp vec for texture indixes for faces
     carr_vec_init(&vt_idxs);
+
+    Faces vn_idxs = {0};  // temp vec for texture indixes for faces
+    carr_vec_init(&vn_idxs);
 
 
     while (file.len > 0) {
@@ -1738,10 +2078,20 @@ ObjData GLutil_load_obj_file(const char* file_path)
             continue;
 
         CarrStringView tag = carr_sv_chop_by_space(&line); 
+        printf("Parsing OBJ Tag: %.*s\n", (int)tag.len, tag.data);
 
-        if (carr_sv_is_equal(tag, NORMAL_TAG) || 
-            carr_sv_is_equal(tag, OBJECT_TAG) || carr_sv_is_equal(tag, SMOOTH_TAG)) {
+
+        if ( carr_sv_is_equal(tag, OBJECT_TAG) || carr_sv_is_equal(tag, SMOOTH_TAG)) {
             printf("[WARNING] Vertex Data not supported: '%.*s'\n", (int)tag.len, tag.data);
+        } else if ( carr_sv_is_equal(tag, NORMAL_TAG) ) {
+            char linebuf[100] = {0};
+            assert(line.len < 100);
+            memcpy(linebuf, line.data, sizeof(char) * line.len);
+
+            GLutil_Vec3f v;
+            sscanf(linebuf, "%f %f %f", &v.x, &v.y, &v.z);
+            carr_vec_append(&vns, v);
+
         } else if ( carr_sv_is_equal(tag, VERTEX_TAG) ) {
 
             char linebuf[100] = {0};
@@ -1750,7 +2100,6 @@ ObjData GLutil_load_obj_file(const char* file_path)
 
             float x, y, z;
             sscanf(linebuf, "%f %f %f", &x, &y, &z);
-
 
             carr_vec_append(&vs, x);
             carr_vec_append(&vs, y);
@@ -1778,6 +2127,16 @@ ObjData GLutil_load_obj_file(const char* file_path)
             char buf2[35];
             char buf3[35];
             
+            // Cada string (%s) do scanf a seguir é composta por até 3 ints,
+            // cada um representando um índice nos vetores de dados.
+            // O primeiro representa o índice no vetor de vértices (x, y, z).
+            // O segundo representa o índice no vetor de texturas  (u, v).
+            // O terceito representa o índice no vetor de normais  (x, y,z).
+            // O primeiro float está sempre presente, o segundo e o terceiro são opcionais.
+            // Apenas índice de vértice:     %d
+            // Índice de vértice e texture:  %d|%d
+            // Índice de vértice e normal:   %d||%d // @TODO: lidar com esse caso corretamente
+            // Todos os 3 índices:           %d|%d|%d  
             sscanf(linebuf, "%s %s %s", buf1, buf2, buf3);
 
             char* buffers[3] = { buf1, buf2, buf3 };
@@ -1797,8 +2156,7 @@ ObjData GLutil_load_obj_file(const char* file_path)
                     if (buf_sv.len > 0) {
                         idx = carr_sv_chop_by_delim(&buf_sv, '/');
                         idx_int = carr_sv_parse_int(&idx);
-                        // @TODO: criar mecanismo para lidar com normais
-                        // @TODO: coloca idx_int no vec de índices para normais
+                        carr_vec_append(&vn_idxs, idx_int - 1);
                     }
                 }
             }
@@ -1810,27 +2168,8 @@ ObjData GLutil_load_obj_file(const char* file_path)
     }
 
 
-    if (vt_idxs.len != 0) {
-        assert(vt_idxs.len == v_idxs.len);
-    }
-
-    /* @TODO: array de índices para normais
-    if (vn_idxs.len != 0) {
-        assert(vn_idxs.len == v_idxs.len);
-    }
-    */
-
-    /* @TODO: add debug logging flags?
-    printf("VIDXS   => { data: %p, len: %lu, cap: %lu }\n", v_idxs.items, v_idxs.len, v_idxs.cap);
-    printf("VT_IDXS => { data: %p, len: %lu, cap: %lu }\n", vt_idxs.items, vt_idxs.len, vt_idxs.cap);
-
-    printf(" ARRAY DE COORDENADAS \n");
-    for (int i = 0; i < vs.len; ++i) {
-        printf("[%d] %f\n", i, vs.items[i]);
-    }
-    */
-
-
+    if (vt_idxs.len != 0) assert(vt_idxs.len == v_idxs.len);
+    if (vn_idxs.len != 0) assert(vn_idxs.len == v_idxs.len);
 
     for (int i = 0; i < v_idxs.len; ++i) {
         int vidx = v_idxs.items[i] * 3;
@@ -1839,12 +2178,6 @@ ObjData GLutil_load_obj_file(const char* file_path)
         float x = vs.items[vidx + 0];
         float y = vs.items[vidx + 1];
         float z = vs.items[vidx + 2];
-
-        /*
-        printf("----\n");
-        printf("VERTEX IDX = %d\n", vidx);
-        printf(" x = %f, y = %f, z = %f \n", x, y, z);
-        */
 
         float u = 0.0f;
         float v = 0.0f;
@@ -1855,27 +2188,29 @@ ObjData GLutil_load_obj_file(const char* file_path)
             v = vts.items[vtidx + 1];
         }
 
+        GLutil_Vec3f vn;
+        if (vn_idxs.len > 0) {
+            int vn_idx = vn_idxs.items[i];
+            vn = vns.items[vn_idx];
+        }
+
         Vertex vertex = {
             .pos     = { .x = x,    .y = y,    .z = z,   },
             .color   = { .r = 1.0f, .g = 1.0f, .b = 1.0f },
             .tex_pos = { .x = u,    .y = v               },
+            .normal  = vn,
         };
 
         carr_vec_append(&verts, vertex);
         carr_vec_append(&faces, verts.len - 1);
-
-        /*
-        printf("  FINAL FACE IDX = %lu\n", verts.len - 1);
-        printf("-----\n");
-        */
-        // __asm__("int3");
-
     }
 
     carr_vec_free(&vs);
     carr_vec_free(&vts);
+    carr_vec_free(&vns);
     carr_vec_free(&v_idxs);
     carr_vec_free(&vt_idxs);
+    carr_vec_free(&vn_idxs);
     carr_sb_free(&sb);
 
 
@@ -1910,19 +2245,22 @@ void GLutil_load_obj_to_GPU(GLutil_ObjData* obj)
 
     // create an individual Attribute Pointer associated with each field 
     // in the GLutil_Vertex struct so that it's usable from the shaders
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(*obj->vertices.items), (void*)offsetof(GLutil_Vertex, pos));
-    glEnableVertexAttribArray(0);
+    GLuint attrb_loc = 0;
+    glVertexAttribPointer(attrb_loc, 3, GL_FLOAT, GL_FALSE, sizeof(*obj->vertices.items), (void*)offsetof(GLutil_Vertex, pos));
+    glEnableVertexAttribArray(attrb_loc++);
 
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(*obj->vertices.items), (void*)offsetof(GLutil_Vertex, color));
-    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(attrb_loc, 3, GL_FLOAT, GL_FALSE, sizeof(*obj->vertices.items), (void*)offsetof(GLutil_Vertex, color));
+    glEnableVertexAttribArray(attrb_loc++);
 
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(*obj->vertices.items), (void*)offsetof(GLutil_Vertex, tex_pos));
-    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(attrb_loc, 2, GL_FLOAT, GL_FALSE, sizeof(*obj->vertices.items), (void*)offsetof(GLutil_Vertex, tex_pos));
+    glEnableVertexAttribArray(attrb_loc++);
+
+    glVertexAttribPointer(attrb_loc, 3, GL_FLOAT, GL_FALSE, sizeof(*obj->vertices.items), (void*)offsetof(GLutil_Vertex, normal));
+    glEnableVertexAttribArray(attrb_loc++);
 
     // bind default buffer and vertex array as a cleanup
     glBindBuffer(GL_ARRAY_BUFFER, 0); 
     glBindVertexArray(0); 
-
 }
 
 
@@ -1980,6 +2318,10 @@ GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj)
 }
 
 
+// @TODO: todos os uniformes do shader estão sendo passados manualmente nessa função
+//        seria bom ter umas funções auxiliares pra poder compactar um pouco esse código
+//        algo como GLutil_add_uniform_int(GLuint shader, int value) que faz a checagem dos erros
+//        do OpenGL e todas as adaptações de nomes e tipos necessárias
 void GLutil_render_model(GLutil* glutil, GLutil_Model* model)
 {
     glUseProgram(model->geometry->shader_program); CHECK_GL_ERROR();
@@ -2014,7 +2356,35 @@ void GLutil_render_model(GLutil* glutil, GLutil_Model* model)
 
     GLuint texture_loc = glGetUniformLocation(model->geometry->shader_program, "the_texture"); CHECK_GL_ERROR();
     glUniform1i(texture_loc, 0); CHECK_GL_ERROR();
-    
+
+    GLuint campos_loc = glGetUniformLocation(model->geometry->shader_program, "camera_pos"); CHECK_GL_ERROR();
+    glUniform3fv(campos_loc, 1, (float*)&glutil->camera.pos);
+
+    GLuint lightscount_loc = glGetUniformLocation(model->geometry->shader_program, "lights_count"); CHECK_GL_ERROR();
+    glUniform1i(lightscount_loc, glutil->lights.len);
+    for (size_t i = 0; i < glutil->lights.len; ++i) {
+        char posstr[50];
+        sprintf(posstr, "lights[%ld].pos", i);
+        GLuint lightpos_loc = glGetUniformLocation(model->geometry->shader_program, posstr); CHECK_GL_ERROR();
+        glUniform3fv(lightpos_loc, 1, (float*)&glutil->lights.items[i].pos); CHECK_GL_ERROR();
+
+        char clrstr[50];
+        sprintf(clrstr, "lights[%ld].clr", i);
+        GLuint lightclr_loc = glGetUniformLocation(model->geometry->shader_program, clrstr); CHECK_GL_ERROR();
+        glUniform3fv(lightclr_loc, 1, (float*)&glutil->lights.items[i].clr); CHECK_GL_ERROR();
+
+        char shinstr[50];
+        sprintf(shinstr, "lights[%ld].shine", i);
+        GLuint lightshin_loc = glGetUniformLocation(model->geometry->shader_program, shinstr); CHECK_GL_ERROR();
+        glUniform1f(lightshin_loc, glutil->lights.items[i].shine); CHECK_GL_ERROR();
+
+        char intenstr[50];
+        sprintf(intenstr, "lights[%ld].intensity", i);
+        GLuint lightinten_loc = glGetUniformLocation(model->geometry->shader_program, intenstr); CHECK_GL_ERROR();
+        glUniform1f(lightinten_loc, glutil->lights.items[i].intensity); CHECK_GL_ERROR();
+    }
+
+
     GLuint has_texture_loc = glGetUniformLocation(model->geometry->shader_program, "has_texture"); CHECK_GL_ERROR();
     if ( model->texture_id == (GLuint)-1 ) {
         glUniform1i(has_texture_loc, false); CHECK_GL_ERROR();
@@ -2028,3 +2398,140 @@ void GLutil_render_model(GLutil* glutil, GLutil_Model* model)
 }
 
 #endif // GLUTIL_H_
+
+
+
+
+/*******************************************************************************
+ *                                                                             *
+ *                       LINCENSES / LICENÇAS                                  *
+ *                                                                             *
+ ******************************************************************************/
+
+
+/************
+ * RGFW     *
+ ***********/
+
+/* 
+* Most of the OpenGl initialization code was taken from:
+* @FROM: https://github.com/ColleagueRiley/OpenGL-Context-Creation
+* made by the author of
+* https://github.com/ColleagueRiley/RGFW 
+* with license:
+*/
+
+/*
+  RGFW 2.0.0-dev
+
+Copyright (C) 2022-26 Riley Mabb (@ColleagueRiley)
+
+libpng license
+
+This software is provided 'as-is', without any express or implied
+warranty.  In no event will the authors be held liable for any damages
+arising from the use of this software.
+
+Permission is granted to anyone to use this software for any purpose,
+including commercial applications, and to alter it and redistribute it
+freely, subject to the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not
+   claim that you wrote the original software. If you use this software
+   in a product, an acknowledgment in the product documentation would be
+   appreciated but is not required.
+2. Altered source versions must be plainly marked as such, and must not be
+   misrepresented as being the original software.
+3. This notice may not be removed or altered from any source distribution.
+
+*/
+
+
+
+
+
+/************
+ * RAYLIB   *
+ ***********/
+
+/* Some of the algebra linear and color conversion (RGB <-> HSV) code was copied
+ * from raylib source code.
+ * https://www.raylib.com/
+ * https://github.com/raysan5/raylib
+ * with License:
+*/
+
+/*
+Copyright (c) 2013-2025 Ramon Santamaria (@raysan5)
+
+This software is provided "as-is", without any express or implied warranty. In no event 
+will the authors be held liable for any damages arising from the use of this software.
+
+Permission is granted to anyone to use this software for any purpose, including commercial 
+applications, and to alter it and redistribute it freely, subject to the following restrictions:
+
+  1. The origin of this software must not be misrepresented; you must not claim that you 
+  wrote the original software. If you use this software in a product, an acknowledgment 
+  in the product documentation would be appreciated but is not required.
+
+  2. Altered source versions must be plainly marked as such, and must not be misrepresented
+  as being the original software.
+
+  3. This notice may not be removed or altered from any source distribution.
+*/
+
+
+
+
+
+/*************
+ * STB_IMAGE *
+ *************/
+
+/* stb_image ( https://github.com/nothings/stb/blob/master/stb_image.h ) 
+ * is used for loading image data as an array os pixels
+ * stb_image offers two licenses. Both are presented here:
+ */
+
+/*
+------------------------------------------------------------------------------
+This software is available under 2 licenses -- choose whichever you prefer.
+------------------------------------------------------------------------------
+ALTERNATIVE A - MIT License
+Copyright (c) 2017 Sean Barrett
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+------------------------------------------------------------------------------
+ALTERNATIVE B - Public Domain (www.unlicense.org)
+This is free and unencumbered software released into the public domain.
+Anyone is free to copy, modify, publish, use, compile, sell, or distribute this
+software, either in source code form or as a compiled binary, for any purpose,
+commercial or non-commercial, and by any means.
+In jurisdictions that recognize copyright laws, the author or authors of this
+software dedicate any and all copyright interest in the software to the public
+domain. We make this dedication for the benefit of the public at large and to
+the detriment of our heirs and successors. We intend this dedication to be an
+overt act of relinquishment in perpetuity of all present and future rights to
+this software under copyright law.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+------------------------------------------------------------------------------
+*/
+
