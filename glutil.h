@@ -381,10 +381,10 @@ typedef struct {
 
 // Uma fonte pontual de luz. Usada no fragment shader.
 typedef struct {
-    float        intensity;
-    float        shine;
-    GLutil_Vec3f pos;
-    GLutil_Vec3f clr;
+    float          intensity;
+    float          shine;
+    GLutil_Vec3f   pos;
+    GLutil_GLColor clr;
 } GLutil_PointLight;
 
  // Array Dinâmico para armazenar todas as fontes pontuais de luz 
@@ -668,6 +668,7 @@ GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
 #define BLACK  GLUTIL_BLACK
 
 #define Color   GLutil_Color
+#define GLColor GLutil_GLColor
 
 #define Vec2i   GLutil_Vec2i
 #define Vec2f   GLutil_Vec2f
@@ -2409,9 +2410,9 @@ void GLutil_render_model(GLutil* glutil, GLutil_Model* model)
     GLuint scale_loc = glGetUniformLocation(model->geometry->shader_program, "scale"); CHECK_GL_ERROR();
     glUniform1f(scale_loc, model->scale); CHECK_GL_ERROR();
 
-    const float fs[3] = { model->world_pos.x, model->world_pos.y, model->world_pos.z };
+    const float wpos[3] = { model->world_pos.x, model->world_pos.y, model->world_pos.z };
     GLuint wpos_loc = glGetUniformLocation(model->geometry->shader_program, "world_pos"); CHECK_GL_ERROR();
-    glUniform3fv(wpos_loc, 1, fs); CHECK_GL_ERROR();
+    glUniform3fv(wpos_loc, 1, wpos); CHECK_GL_ERROR();
 
     const float orient[4] =  { model->orientation.x, model->orientation.y, model->orientation.z, model->orientation.w };
     GLuint orient_loc = glGetUniformLocation(model->geometry->shader_program, "orientation"); CHECK_GL_ERROR();
