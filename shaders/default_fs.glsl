@@ -1,5 +1,7 @@
 #version 330 core
 
+#define quaternion vec4
+
 in vec3 vs_pos;
 in vec3 vs_color;
 in vec2 vs_texture_pos;
@@ -11,6 +13,9 @@ uniform float t;
 
 uniform int has_texture;        // @TODO: is there a better way of passing booleans to shaders?
 uniform sampler2D the_texture;
+
+
+uniform quaternion orientation;
 
 uniform vec3 camera_pos;
 #define MAX_LIGHTS 255
@@ -89,6 +94,4 @@ void main()
     // clr = vec4(1.0, 1.0, 1.0, 1.0);
     FragColor = clr;
 }
-
-
 

@@ -273,7 +273,6 @@ typedef struct {
     GLutil_Vec2f tex_pos;
 
     GLutil_Vec3f normal;
-
 } GLutil_Vertex;
 
 
@@ -307,12 +306,13 @@ typedef struct {
 } GLutil_ObjData;
 
 typedef struct {
-    float    scale;
-    GLutil_Vec3f    world_pos;
+    float             scale;
+    GLutil_Vec3f      world_pos;
+    GLutil_Quaternion orientation;
 
-    GLutil_ObjData* geometry;
-    GLuint          texture_id;  // id to the texture_id returned by OpenGL when the texture data is loaded into the GPU
-                                 // a value of -1 (4294967295), means there's no texture associated with this model 
+    GLutil_ObjData*   geometry;
+    GLuint            texture_id;  // id to the texture_id returned by OpenGL when the texture data is loaded into the GPU
+                                   // a value of -1 (4294967295), means there's no texture associated with this model 
 } GLutil_Model;
 
 
@@ -501,6 +501,7 @@ GLutil_Vec3f GLutil_Vec3f_rotate_around_axis(GLutil_Vec3f v, GLutil_Vec3f R, flo
 GLutil_Vec3f GLutil_Vec3f_rotate(GLutil_Vec3f v, float angle, GLutil_Vec3f axis);          // rotação usando quaternions
 
 
+
 GLutil_Vec4f GLutil_Vec4f_apply_mat4x4(GLutil_Vec4f v, GLutil_Mat4x4f A);
 float GLutil_Vec4f_dot(GLutil_Vec4f a, GLutil_Vec4f b);
 
@@ -510,6 +511,7 @@ GLutil_Mat3x3f GLutil_Mat3x3f_mul(GLutil_Mat3x3f A, GLutil_Mat3x3f B);
 GLutil_Mat4x4f GLutil_Mat4x4f_mul(GLutil_Mat4x4f a, GLutil_Mat4x4f b);
 
 // quaternions
+GLutil_Quaternion GLutil_unit_quaternion(); // { 1.0f, 0.0f, 0.0f, 0.0f } == quaternion "padrão" que representa ausência de rotação alguma
 GLutil_Quaternion GLutil_quat_from_angle_axis(float angle, GLutil_Vec3f axis);
 GLutil_Quaternion GLutil_quat_from_vec3f(GLutil_Vec3f v);
 int               GLutil_quat_sqlength(GLutil_Quaternion q);
@@ -548,6 +550,10 @@ GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
 void GLutil_render_model(GLutil* glutil, GLutil_Model* model);
 
 GLuint GLutil_load_texture(const char* texture_name);
+
+
+void GLutil_add_light(GLutil* glutil, GLutil_PointLight light);
+
 
 void GLutil_wireframe_mode();
 GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
@@ -675,6 +681,8 @@ GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
 #define Mat4x4f  GLutil_Mat4x4f
 #define Mat4f    GLutil_Mat4f
 
+#define Quaternion GLutil_Quaternion
+
 #define Camera    GLutil_Camera
 #define _3DBasis  GLutil_3DBasis
 
@@ -732,7 +740,8 @@ GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
 #define Vec3f_rotate_x           GLutil_Vec3f_rotate_x
 #define Vec3f_rotate_y           GLutil_Vec3f_rotate_y
 #define Vec3f_rotate_z           GLutil_Vec3f_rotate_z
-#define Vec3f_rotate_around_axis GLutil_Vec3f_rotate_around_axis
+#define Vec3f_rotate_around_axis GLutil_Vec3f_rotate_around_axis // com matrizes 
+#define Vec3f_rotate             GLutil_Vec3f_rotate             // com quaternions
 
 #define Vec4f_dot          GLutil_Vec4f_dot
 #define Vec4f_apply_mat4x4 GLutil_Vec4f_apply_mat4x4
@@ -740,6 +749,22 @@ GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
 #define Mat2x2f_mul GLutil_Mat2x2f_mul
 #define Mat3x3f_mul GLutil_Mat3x3f_mul
 #define Mat4x4f_mul GLutil_Mat4x4f_mul
+
+
+#define unit_quaternion      GLutil_unit_quaternion
+#define quat_from_angle_axis GLutil_quat_from_angle_axis
+#define quat_from_vec3f      GLutil_quat_from_vec3f
+#define quat_sqlength        GLutil_quat_sqlength
+#define quat_conjugate       GLutil_quat_conjugate
+#define quat_scale           GLutil_quat_scale
+#define quat_div_scalar      GLutil_quat_div_scalar
+#define quat_mul             GLutil_quat_mul
+#define quat_inverse         GLutil_quat_inverse
+
+
+#define PointLight GLutil_PointLight
+#define PointLights GLutil_PointLights
+
 
 #define PRINT_ERROR     GLUTIL_PRINT_ERROR
 #define CHECK_GL_ERROR  GLUTIL_CHECK_GL_ERROR
@@ -776,6 +801,9 @@ GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
 #define camera_up         GLutil_camera_up
 #define camera_basis      GLutil_camera_basis
 #define camera_orbit      GLutil_camera_orbit
+
+
+#define add_light GLutil_add_light
 
 #endif // GLUTIL_INCLUDE_PREFIX
 
@@ -1592,6 +1620,18 @@ GLutil_Mat4x4f GLutil_Mat4x4f_mul(GLutil_Mat4x4f A, GLutil_Mat4x4f B)
 
 
 // quaternions
+GLutil_Quaternion GLutil_unit_quaternion() // no rotation
+{
+    return (GLutil_Quaternion) {
+        // vector part == 0.0f
+        .x = 0.0f,
+        .y = 0.0f, 
+        .z = 0.0f,
+        // real part == 1.0f
+        .w = 1.0f,
+    };
+}
+
 GLutil_Quaternion GLutil_quat_from_angle_axis(float angle, GLutil_Vec3f axis)
 {
     GLutil_Quaternion quat;
@@ -1923,6 +1963,17 @@ GLutil_Camera GLutil_camera_orbit(GLutil_Camera camera, float theta, float phi)
     return out;
 }
 
+/*******************************************************************************
+ *                            LIGHTING                                         *
+*******************************************************************************/
+void GLutil_add_light(GLutil* glutil, GLutil_PointLight light) 
+{
+    carr_vec_append(&glutil->lights, light);
+    return;
+}
+
+
+
 
 /*******************************************************************************
  *                 INPUT (MOUSE, KEYBOARD, ETC)                                *
@@ -2195,10 +2246,10 @@ ObjData GLutil_load_obj_file(const char* file_path)
         }
 
         Vertex vertex = {
-            .pos     = { .x = x,    .y = y,    .z = z,   },
-            .color   = { .r = 1.0f, .g = 1.0f, .b = 1.0f },
-            .tex_pos = { .x = u,    .y = v               },
-            .normal  = vn,
+            .pos         = { .x = x,    .y = y,    .z = z,   },
+            .color       = { .r = 1.0f, .g = 1.0f, .b = 1.0f },
+            .tex_pos     = { .x = u,    .y = v               },
+            .normal      = vn,
         };
 
         carr_vec_append(&verts, vertex);
@@ -2216,6 +2267,7 @@ ObjData GLutil_load_obj_file(const char* file_path)
 
     obj.vertices   = verts;
     obj.faces      = faces;
+
 
     default_shaders(&obj);
     GLutil_load_obj_to_GPU(&obj);
@@ -2246,16 +2298,23 @@ void GLutil_load_obj_to_GPU(GLutil_ObjData* obj)
     // create an individual Attribute Pointer associated with each field 
     // in the GLutil_Vertex struct so that it's usable from the shaders
     GLuint attrb_loc = 0;
-    glVertexAttribPointer(attrb_loc, 3, GL_FLOAT, GL_FALSE, sizeof(*obj->vertices.items), (void*)offsetof(GLutil_Vertex, pos));
+
+
+    // @TODO: o cálculo da quantidadde de elemenntos por atributo vai quebrar caso se altere o tipo do elemento individual.
+    //        isto é, seria bom descobrir como fazer algo que não depende explicitamente do tipo 'float' ou qualquer outro tipo hardcoded.
+    //        algo como:
+    //        sizeof(( *obj->vertices.items ).pos) / sizeof( ( typeof( (*obj->vertices.items ).pos.__first_field__ ) ) )
+    //        mas claro, algo como o campo __first_field__ não existe e não é assim que o macro typeof funciona (eu acho?).
+    glVertexAttribPointer(attrb_loc, sizeof((*obj->vertices.items).pos)         / sizeof(float), GL_FLOAT, GL_FALSE, sizeof(*obj->vertices.items), (void*)offsetof(GLutil_Vertex, pos));
     glEnableVertexAttribArray(attrb_loc++);
 
-    glVertexAttribPointer(attrb_loc, 3, GL_FLOAT, GL_FALSE, sizeof(*obj->vertices.items), (void*)offsetof(GLutil_Vertex, color));
+    glVertexAttribPointer(attrb_loc, sizeof((*obj->vertices.items).color)       / sizeof(float), GL_FLOAT, GL_FALSE, sizeof(*obj->vertices.items), (void*)offsetof(GLutil_Vertex, color));
     glEnableVertexAttribArray(attrb_loc++);
 
-    glVertexAttribPointer(attrb_loc, 2, GL_FLOAT, GL_FALSE, sizeof(*obj->vertices.items), (void*)offsetof(GLutil_Vertex, tex_pos));
+    glVertexAttribPointer(attrb_loc, sizeof((*obj->vertices.items).tex_pos)     / sizeof(float), GL_FLOAT, GL_FALSE, sizeof(*obj->vertices.items), (void*)offsetof(GLutil_Vertex, tex_pos));
     glEnableVertexAttribArray(attrb_loc++);
 
-    glVertexAttribPointer(attrb_loc, 3, GL_FLOAT, GL_FALSE, sizeof(*obj->vertices.items), (void*)offsetof(GLutil_Vertex, normal));
+    glVertexAttribPointer(attrb_loc, sizeof((*obj->vertices.items).normal)      / sizeof(float), GL_FLOAT, GL_FALSE, sizeof(*obj->vertices.items), (void*)offsetof(GLutil_Vertex, normal));
     glEnableVertexAttribArray(attrb_loc++);
 
     // bind default buffer and vertex array as a cleanup
@@ -2301,12 +2360,12 @@ GLuint GLutil_load_texture(const char* texture_name)
 GLutil_Model GLutil_make_model()
 {
     GLutil_Model m = (GLutil_Model) {
-        .scale = 10000.0f,  // @TODO: encontrar valores mais razoáveis de escala padrão lol
-        .world_pos = { 0.0f, 0.0f, 0.0f },
-        .geometry = NULL,
-        .texture_id = -1 // -1 == no texture
+        .scale       = 10000.0f,  // @TODO: encontrar valores mais razoáveis de escala padrão lol
+        .world_pos   = { 0.0f, 0.0f, 0.0f },
+        .orientation = GLutil_unit_quaternion(), // { 1.0f, 0.0f, 0.0f, 0.0f } = no rotation
+        .geometry    = NULL,
+        .texture_id  = -1 // -1 == no texture
     };
-
     return m;
 }
 
@@ -2353,6 +2412,10 @@ void GLutil_render_model(GLutil* glutil, GLutil_Model* model)
     const float fs[3] = { model->world_pos.x, model->world_pos.y, model->world_pos.z };
     GLuint wpos_loc = glGetUniformLocation(model->geometry->shader_program, "world_pos"); CHECK_GL_ERROR();
     glUniform3fv(wpos_loc, 1, fs); CHECK_GL_ERROR();
+
+    const float orient[4] =  { model->orientation.x, model->orientation.y, model->orientation.z, model->orientation.w };
+    GLuint orient_loc = glGetUniformLocation(model->geometry->shader_program, "orientation"); CHECK_GL_ERROR();
+    glUniform4fv(orient_loc, 1, orient); CHECK_GL_ERROR();
 
     GLuint texture_loc = glGetUniformLocation(model->geometry->shader_program, "the_texture"); CHECK_GL_ERROR();
     glUniform1i(texture_loc, 0); CHECK_GL_ERROR();

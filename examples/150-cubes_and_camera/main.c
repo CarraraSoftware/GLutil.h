@@ -40,16 +40,15 @@ void init_cubes(ObjData* obj)
         if (r < 0.5f) texture = texture_1;
         else          texture = texture_2;
 
-        CUBES[i] = (Model) {
-            .scale      = RAND(CUBE_MIN_SCALE, CUBE_MAX_SCALE),
-            .world_pos  = { 
-                .x = RAND(CUBE_MIN_POS, CUBE_MAX_POS), 
-                .y = RAND(CUBE_MIN_POS, CUBE_MAX_POS),  
-                .z = RAND(CUBE_MIN_POS, CUBE_MAX_POS), 
-            },
-            .geometry   = obj,
-            .texture_id = texture,
+        Model model = model_from_obj(obj);
+        model.scale = RAND(CUBE_MIN_SCALE, CUBE_MAX_SCALE); 
+        model.world_pos = (Vec3f){ 
+            .x = RAND(CUBE_MIN_POS, CUBE_MAX_POS), 
+            .y = RAND(CUBE_MIN_POS, CUBE_MAX_POS),  
+            .z = RAND(CUBE_MIN_POS, CUBE_MAX_POS), 
         };
+        model.texture_id = texture;
+        CUBES[i] = model;
     }
 }
 
@@ -102,17 +101,10 @@ int main(void) {
     glutil.camera.pos.z = 50.0f;
     glutil.camera.fovX = 90.0f;
 
-
-    /*
-    printf("Size of Input: %ld\n", sizeof(Input));
-    return 0;
-    */
+    
     ObjData obj = GLutil_load_obj_file(OBJ_PATH);
     init_cubes(&obj);
     
-#if WIRED
-    wireframe_mode();
-#endif
     for (;;) {
         uint64_t dt = begin_frame(&glutil);
         {

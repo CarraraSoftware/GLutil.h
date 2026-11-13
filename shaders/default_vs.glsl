@@ -110,11 +110,10 @@ vec3 vec3_rotate(vec3 v, float angle, vec3 axis)
 }
 
 void main() {
-
-    vec3 pos0 = vec3_rotate_by_quat( pos, orientation );
+    vec3 pos0    = vec3_rotate_by_quat( pos, orientation    );
+    vec3 normal0 = vec3_rotate_by_quat( normal, orientation );
 
     vec3 pos1 = scale * pos0;
-    // vec3 pos0 = pos;
 
 
     pos1 = world_pos + pos1;
@@ -134,44 +133,5 @@ void main() {
     gl_Position = pos4;
     vs_color = color;
     vs_texture_pos = tex_pos;
-    vs_normal = normal;
+    vs_normal = normal0;
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

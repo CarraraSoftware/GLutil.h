@@ -5,13 +5,27 @@
 #include "../../glutil.h"
 
 
-const char* MODEL_FILE_PATH       = "./examples/100-textured_cube/assets/cube_tex.obj";
-const char* TEXTURE_FILE_PATH     = "./examples/100-textured_cube/assets/texture.jpg";
+#define ASSETS_PATH "./examples/100-textured_cube/assets"
+
+// const char* MODEL_FILE_PATH = ASSETS_PATH"/cube_tex.obj";
+// const char* MODEL_FILE_PATH = ASSETS_PATH"/monkey.obj";
+const char* MODEL_FILE_PATH   = ASSETS_PATH"/normal.obj";
+const char* TEXTURE_FILE_PATH = ASSETS_PATH"/texture.jpg";
 
 #define STEP_SIZE 5.0f
 
-void update_camera_position(GLutil* glutil)
+void update_camera(GLutil* glutil)
 {
+    const float mouse_sensiv = 0.3f;
+    if ( glutil->input.mouse_button_right.pressed && glutil->input.mouse_movement.moved ) { 
+        float cam_dist = Vec3f_length(Vec3f_sub(glutil->camera.pos, glutil->camera.target));
+        Vec2i delta = Vec2i_sub(glutil->input.mouse_movement.pos, glutil->input.mouse_movement.last_pos);
+        float theta = -mouse_sensiv * atan2f( delta.y, cam_dist );
+        float phi =   -mouse_sensiv * atan2f( delta.x, cam_dist );
+        glutil->camera = camera_orbit(glutil->camera, theta, phi);
+    }
+
+
     Vec3f campos = glutil->camera.pos;
     Vec3f camtrg = glutil->camera.target;
 
@@ -34,17 +48,6 @@ void update_camera_position(GLutil* glutil)
 }
 
 
-void move_camera_from_mouse(GLutil* glutil)
-{
-    const float mouse_sensiv = 0.3f;
-    if ( glutil->input.mouse_button_right.pressed && glutil->input.mouse_movement.moved ) { 
-        float cam_dist = Vec3f_length(Vec3f_sub(glutil->camera.pos, glutil->camera.target));
-        Vec2i delta = Vec2i_sub(glutil->input.mouse_movement.pos, glutil->input.mouse_movement.last_pos);
-        float theta = -mouse_sensiv * atan2f( delta.y, cam_dist );
-        float phi =   -mouse_sensiv * atan2f( delta.x, cam_dist );
-        glutil->camera = camera_orbit(glutil->camera, theta, phi);
-    }
-}
 
 int main(void) {
     GLutil glutil = {0};
@@ -52,55 +55,61 @@ int main(void) {
     // init(&glutil, 2560, 1440);
     set_target_fps(&glutil, 60.0f);
 
+    // wireframe_mode();
+
 
     ObjData obj = load_obj_file(MODEL_FILE_PATH); // loads model with default shaders and no texture
     Model cube = model_from_obj(&obj);
-    cube.texture_id = load_texture(TEXTURE_FILE_PATH);
-
-    glutil.camera.pos.z = 30.0f;
+    if ( TEXTURE_FILE_PATH ) cube.texture_id = load_texture(TEXTURE_FILE_PATH);
 
 
-    for (size_t i = 0; i < obj.vertices.len; i++) {
-        printf("[%lu] -  %f %f %f\n", i, obj.vertices.items[i].pos.x, obj.vertices.items[i].pos.y, obj.vertices.items[i].pos.z);
-    }
+    glutil.camera.pos.z = 20.0f;
+    glutil.camera.pos.y = 10.0f;
+    glutil.camera.pos.x = 10.0f;
 
-    printf("END OF VERTS (%lu)\n", obj.vertices.len);
+    Vec3f light_clr = (Vec3f) { 1.0f, 1.0f, 1.0f };
+    GLutil_PointLight l = (GLutil_PointLight) {
+        .pos = glutil.camera.pos,
+        .clr = light_clr,
+        .shine = 1.0f,
+        .intensity = 1000.0f,
+    };
+    vec_append(&glutil.lights, l);
 
-    for (size_t i = 0; i < obj.faces.len; i += 3) {
-        printf("[%lu] -  %u %u %u\n", i, obj.faces.items[i], obj.faces.items[i+1], obj.faces.items[i+2]);
-    }
-    printf("END OF FACES (%lu)\n", obj.faces.len);
-
-
-
-    // glCullFace(GL_FRONT);
-    // glFrontFace(GL_CW);
-    // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    GLutil_PointLight l2 = (GLutil_PointLight) {
+        .pos = (Vec3f) { 0.0f, 100.0f, 100.0f },
+        .clr = (Vec3f) { 0.8f, 0.9f, 0.3f },
+        .shine = 256.0f,
+        .intensity = 500.0f,
+    };
+    vec_append(&glutil.lights, l2);
 
     for (;;) {
-
-        /*
-        while (XPending(glutil.display)) {
-            XEvent event;
-            XNextEvent(glutil.display, &event);
-            if (event.type != KeyPress) continue;
-            if (event.xkey.keycode == 'A') default_shaders(&obj); // hot reload shaders quando pressionar barra de espaço
-        }
-        */
-
         uint64_t dt = begin_frame(&glutil);
 
-        move_camera_from_mouse(&glutil);
-        update_camera_position(&glutil);
+        // hot reload shaders quando pressionar barra de espaço
+        if ( glutil.input.space_bar.down ) default_shaders(cube.geometry);
+
+        update_camera(&glutil);
+
+        if ( glutil.lights.len ) {
+            glutil.lights.items[0].pos = glutil.camera.pos;
+            glutil.lights.items[0].shine = 8.0f;
+            glutil.lights.items[0].intensity = 100.0f;
+        }
+
+
+        Quaternion rotation = quat_from_angle_axis( 0.01, (Vec3f){ 0.0f, 1.0f, 0.0f } );
+        cube.orientation = quat_mul(cube.orientation, rotation);
+
 
         clear_bg(BLACK);
         render_model(&glutil, &cube);
+
         end_frame(&glutil);
     }
 
     destroy(&glutil);
     return 0;
 }
-
-
 
