@@ -7,6 +7,7 @@
 
 #define ASSETS_PATH "./examples/100-textured_cube/assets"
 
+const char* BALL_FILE_PATH              = ASSETS_PATH"/ball.obj";
 const char* CUBE_ONLY_VERTS_FILE_PATH   = ASSETS_PATH"/tricube.obj";
 const char* TEXTURED_CUBE_FILE_PATH     = ASSETS_PATH"/cube_tex.obj";
 const char* MONKEY_MODEL_FILE_PATH      = ASSETS_PATH"/monkey.obj";
@@ -80,30 +81,30 @@ int main(void) {
 
 
 
-    // bare bones cube with only vertex data for representing the light source's position
-    ObjData obj2 = load_obj_file(CUBE_ONLY_VERTS_FILE_PATH);
-    Model cube2  = model_from_obj(&obj2);
+    // bare bones ball with only vertex data for representing the light source's position
+    ObjData ball_obj = load_obj_file(BALL_FILE_PATH);
+    Model ball = model_from_obj(&ball_obj);
 
-    cube2.world_pos = (Vec3f) {
+    ball.world_pos = (Vec3f) {
         .x = 12000.0f, 
-        .y = 12000.0f,  
+        .y = 0.0f,
         .z = 12000.0f, 
     };
-    cube2.scale = 2000.0f;
+    ball.scale = 1000.0f;
 
-    GLColor cube2_clr = (GLColor) { 0.8f, 0.9f, 0.3f };
+    GLColor ball_clr = (GLColor) { 0.8f, 0.9f, 0.3f };
 
-    for ( int i = 0; i < cube2.geometry->vertices.len; ++i ) {
-        Vertex* v = &cube2.geometry->vertices.items[i];
-        v->color = cube2_clr;
+    for ( int i = 0; i < ball.geometry->vertices.len; ++i ) {
+        Vertex* v = &ball.geometry->vertices.items[i];
+        v->color = ball_clr;
     }
 
 
     GLutil_PointLight l2 = (GLutil_PointLight) {
-        .pos = cube2.world_pos,
-        .clr = cube2_clr,
-        .shine = 8.0f,
-        .intensity = 10000.0f,
+        .pos = ball.world_pos,
+        .clr = ball_clr,
+        .shine = 2.0f,
+        .intensity = 50000.0f,
     };
     vec_append(&glutil.lights, l2);
 
@@ -126,23 +127,19 @@ int main(void) {
             glutil.lights.items[0].intensity = 100.0f;
         }
 
-
         Quaternion rotation = quat_from_angle_axis( 0.01, (Vec3f){ 0.0f, 1.0f, 0.0f } );
         cube.orientation = quat_mul(cube.orientation, rotation);
 
 
         Vec3f axis = { 0.0f, 1.0f, 0.0f };
         float angle = -0.01f;
-        printf("-----\n");
-        printf("before rotation: %f %f %f\n", cube2.world_pos.x, cube2.world_pos.y, cube2.world_pos.z);
-        cube2.world_pos = Vec3f_rotate(cube2.world_pos, angle, axis);
-        printf("after rotation : %f %f %f\n", cube2.world_pos.x, cube2.world_pos.y, cube2.world_pos.z);
-        glutil.lights.items[1].pos = cube2.world_pos;
+        ball.world_pos = Vec3f_rotate(ball.world_pos, angle, axis);
+        glutil.lights.items[1].pos = ball.world_pos;
 
 
         clear_bg(BLACK);
         render_model(&glutil, &cube);
-        render_model(&glutil, &cube2);
+        render_model(&glutil, &ball);
 
         end_frame(&glutil);
     }
