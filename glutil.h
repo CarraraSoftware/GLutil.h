@@ -36,31 +36,37 @@ Ou seja, algo assim:
  *
  * file:// *********************  main.c ***************************************
  *
- * #define GLUTIL_IMPLEMENTATION // stb_style header only
- * #include "glutil.h"                                                           
- *                                                                               
- * int main(void) {                                                              
- *     GLutil glutil = {0};                     // aloca na stack um GLutil
- *     init(&glutil, 800, 600);                 // inicializa a struct que gerencia todo o estado da aplicação                                 
- *     set_target_fps(&glutil, 60.0f);
+
+#define GLUTIL_IMPLEMENTATION // stb_style header only
+#include "glutil.h"                                                           
+                                                                              
+int main(void) {                                                              
+    GLutil glutil = {0};                     // aloca na stack um GLutil
+    init(&glutil, 800, 600);                 // inicializa a struct que gerencia todo o estado da aplicação                                 
+    set_target_fps(&glutil, 60.0f);
+
+    for (;;) {
+        uint64_t dt = begin_frame(&glutil);  // processa todos os eventos do X11 e tudo mais que for necessário pra conseguir colocar os pixels na tela
+            clear_bg(BLACK);
+            circle(                          // desenhar um círcula usando o immediate_mode do OpenGL
+                (Vec2f) { 100.0f, 100.0f },  //      centro do círculo             
+                50,                          //      raio do círculo               
+                COLOR( 255, 255, 255 )       //      cor do círculo                
+            );                                                                
+        end_frame(&glutil);                  // exibe os pixels (isto é, faz o swap dos buffers), atualiza o estado interno e qualquer outra coisa que precise antes do próximo frame
+    }                                                                         
+                                                                              
+    destroy(&glutil);                                                         
+    return 0;                                                                 
+}                                                                             
+
+ * E então você compila o projeto com:
+ * gcc -o main main.c -lX11 -lGL -lm
  *
- *     for (;;) {
- *         uint64_t dt = begin_frame(&glutil);  // processa todos os eventos do X11 e tudo mais que for necessário pra conseguir colocar os pixels na tela
- *             clear_bg(BLACK);
- *             circle(                          // desenhar um círcula usando o immediate_mode do OpenGL
- *                 (Vec2f) { 100.0f, 100.0f },  //      centro do círculo             
- *                 50,                          //      raio do círculo               
- *                 COLOR( 255, 255, 255 )       //      cor do círculo                
- *             );                                                                
- *         end_frame(&glutil);                  // exibe os pixels (isto é, faz o swap dos buffers), atualiza o estado interno e qualquer outra coisa que precise antes do próximo frame
- *     }                                                                         
- *                                                                               
- *     destroy(&glutil);                                                         
- *     return 0;                                                                 
- * }                                                                             
- *
- *
- */
+ * e roda com:
+ * ./main
+*
+*/
 
 
 
@@ -260,9 +266,18 @@ typedef struct  {
 ********************************/
 
 typedef enum {
+    GLUTIL_PROGRAM_SHADER,
     GLUTIL_VERT_SHADER = GL_VERTEX_SHADER,
     GLUTIL_FRAG_SHADER = GL_FRAGMENT_SHADER,
 } GLutil_ShaderType;
+
+typedef struct {
+    GLuint id;
+
+    // Útil para reportar erros de compilação.
+    const char* vert_shader_filename;
+    const char* frag_shader_filename;
+} GLutil_ShaderProgram;
 
 
 typedef struct {
@@ -301,7 +316,7 @@ typedef struct {
     // talvez esse campo deva ser interpretado como o shader padrão associado
     // a essa model, mas através de um Vec<Shader> em algum lugar podemos
     // permitir adicionar mais shaders dinamicamente
-    GLuint shader_program;          // id of compiled and linked shader program to use
+    GLutil_ShaderProgram shader_program;          // id of compiled and linked shader program to use
                                     // a value of -1 (4294967295), means there's no shader associated with this model 
 } GLutil_ObjData;
 
@@ -537,9 +552,26 @@ GLutil_3DBasis GLutil_camera_basis(GLutil_Camera* camera);
 GLutil_Camera GLutil_camera_orbit(GLutil_Camera camera, float theta, float phi);
 
 // SHADERS
-GLuint GLutil_load_shader(const char* name, GLutil_ShaderType type);
-void GLutil_default_shaders(GLutil_ObjData* obj);
+GLutil_ShaderProgram GLutil_shader_new(const char* vert_shader, const char* frag_shader); // Cria um ShaderProgram através da compilação e linking do arquivos de shader nos parâmetros
+GLutil_ShaderProgram GLutil_default_shaders();                                            // Cria um ShaderProgram através da compilação e linking do arquivos de shader com nomes representados por GLUTIL_DEFAULT_VERT_SHADER_PATH e GLUTIL_DEFAULT_FRAG_SHADER_PATH.
+GLuint GLutil_shader_load_vert(const char* name); // Wrapper de shader_load
+GLuint GLutil_shader_load_frag(const char* name); // Wrapper de shader_load
+GLuint GLutil_shader_load(const char* name, GLutil_ShaderType type); // Lê o código fonte de um arquivo de vertex ou fragment shader, compila ele e retorna o id do shader compilado. Majoritariamente feito pra uso interno da lib, mas pode ser útil.
+void GLutil_check_shader_compilation_error_(GLuint shader_id, const char* shader_file, GLutil_ShaderType type, int line, const char* file, const char* func); // não usar diretamente. função feita pra ser usada através do macro GLutil_check_shader_compilation_error
 
+void GLutil_shader_use(GLutil_ShaderProgram shader); // marca o id do shader como ativo no opengl, essencialmente um wrapper de glUseProgram(shader.id);
+
+
+// funções auxialiares pra passar uniforms para os shaders
+void GLutil_shader_add_int(GLutil_ShaderProgram shader, const char* name, int value);
+void GLutil_shader_add_float(GLutil_ShaderProgram shader, const char* name, float value);
+void GLutil_shader_add_vec3f(GLutil_ShaderProgram shader, const char* name, GLutil_Vec3f value);
+void GLutil_shader_add_glcolor(GLutil_ShaderProgram shader, const char* name, GLutil_GLColor value);
+void GLutil_shader_add_vec4f(GLutil_ShaderProgram shader, const char* name, GLutil_Vec4f value);
+void GLutil_shader_add_quaternion(GLutil_ShaderProgram shader, const char* name, GLutil_Quaternion value);
+void GLutil_shader_add_mat3f(GLutil_ShaderProgram shader, const char* name, GLutil_Mat3x3f value);
+void GLutil_shader_add_mat4f(GLutil_ShaderProgram shader, const char* name, GLutil_Mat4x4f value);
+void GLutil_shader_add_mat4f_transposed(GLutil_ShaderProgram shader, const char* name, GLutil_Mat4x4f value);
 
 // MODELS, OBJ E TEXTURES
 GLutil_ObjData GLutil_load_obj_file(const char* file_path);
@@ -552,7 +584,8 @@ void GLutil_render_model(GLutil* glutil, GLutil_Model* model);
 GLuint GLutil_load_texture(const char* texture_name);
 
 
-void GLutil_add_light(GLutil* glutil, GLutil_PointLight light);
+int GLutil_add_light(GLutil* glutil, GLutil_PointLight light);
+GLutil_PointLight* GLutil_get_light(GLutil* glutil, int light_id);
 
 
 void GLutil_wireframe_mode();
@@ -581,6 +614,8 @@ GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
 
 #define GLUTIL_PRINT_ERROR(msg) fprintf(stderr, "%d:%s:%s ERROR: %s", __LINE__, __FILE__, __FUNCTION__, msg)
 #define GLUTIL_CHECK_GL_ERROR() GLutil_check_gl_error_(__LINE__, __FILE__, __FUNCTION__)
+
+#define GLutil_check_shader_compilation_error(shader_id, shader_file, type) GLutil_check_shader_compilation_error_(shader_id, shader_file, type, __LINE__, __FILE__, __FUNCTION__);
 
 /*
 #define ALL_INPUT_MASKS ( \
@@ -669,6 +704,9 @@ GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
 
 #define Color   GLutil_Color
 #define GLColor GLutil_GLColor
+
+#define ShaderType GLutil_ShaderType
+#define Shader     GLutil_ShaderProgram
 
 #define Vec2i   GLutil_Vec2i
 #define Vec2f   GLutil_Vec2f
@@ -782,8 +820,21 @@ GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
 #define next_event        GLutil_next_event
 #define t_secs            GLutil_t_secs
 
-#define load_shader        GLutil_load_shader
-#define default_shaders    GLutil_default_shaders
+#define default_shaders                GLutil_default_shaders
+#define check_shader_compilation_error GLutil_check_shader_compilation_error
+#define shader_new                     GLutil_shader_new
+#define shader_load                    GLutil_shader_load
+#define shader_use                     GLutil_shader_use
+#define shader_add_int                 GLutil_shader_add_int
+#define shader_add_float               GLutil_shader_add_float
+#define shader_add_vec3f               GLutil_shader_add_vec3f
+#define shader_add_glcolor             GLutil_shader_add_glcolor
+#define shader_add_vec4f               GLutil_shader_add_vec4f
+#define shader_add_quaternion          GLutil_shader_add_quaternion
+#define shader_add_mat3f               GLutil_shader_add_mat3f
+#define shader_add_mat4f               GLutil_shader_add_mat4f
+#define shader_add_mat4f_transposed    GLutil_shader_add_mat4f_transposed
+
 
 #define render_obj       GLutil_render_obj
 #define load_obj_file    GLutil_load_obj_file
@@ -805,6 +856,7 @@ GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
 
 
 #define add_light GLutil_add_light
+#define get_light GLutil_get_light
 
 #endif // GLUTIL_INCLUDE_PREFIX
 
@@ -837,8 +889,8 @@ GLutil_Camera GLUTIL_DEFAULT_CAMERA = {
 
 #define GLUTIL_DIV_EPS 0.000001
 
-static const char* DEFAULT_VERT_SHADER_PATH = "./shaders/default_vs.glsl";
-static const char* DEFAULT_FRAG_SHADER_PATH = "./shaders/default_fs.glsl";
+static const char* GLUTIL_DEFAULT_VERT_SHADER_PATH = "./shaders/default_vs.glsl";
+static const char* GLUTIL_DEFAULT_FRAG_SHADER_PATH = "./shaders/default_fs.glsl";
 
 
 const char* INPUT_TYPE_NAMES[] = {
@@ -894,12 +946,26 @@ const char* INPUT_TYPE_NAMES[] = {
    X( glGenBuffers,               void,         GLsizei n, GLuint *buffers                                                                           ) \
    X( glBindBuffer,               void,         GLenum target, GLuint  buffer                                                                        ) \
    X( glBufferData,               void,         GLenum target, GLsizeiptr size, const void *data, GLenum usage                                       ) \
+   X( glGenFramebuffers,          void,         GLsizei n, GLuint* ids                                                                               ) \
+   X( glBindFramebuffer,          void,         GLenum target, GLuint framebuffer                                                                    ) \
+   X( glFramebufferTexture,       void, 	    GLenum target, GLenum attachment, GLuint texture, GLint level                                        ) \
+   X( glFramebufferTexture1D,     void, 	    GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level                      ) \
+   X( glFramebufferTexture2D,     void, 	    GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level                      ) \
+   X( glFramebufferTexture3D,     void, 	    GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level, GLint layer         ) \
+   X( glCheckFramebufferStatus,   GLenum,       GLenum target                                                                                        ) \
+   X( glGenRenderbuffers,         void,         GLsizei n, GLuint* renderbuffers                                                                     ) \
+   X( glBindRenderbuffer,         void,         GLenum target, GLuint renderbuffer                                                                   ) \
+   X( glRenderbufferStorage,      void,         GLenum target, GLenum internalformat, GLsizei width, GLsizei height                                  ) \
+   X( glFramebufferRenderbuffer,  void,         GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer                     ) \
    X( glCreateShader,             GLuint,       GLenum type                                                                                          ) \
    X( glShaderSource,             void,         GLuint shader,  GLsizei count, const GLchar *const*string, const GLint *length                       ) \
    X( glCompileShader,            void,         GLuint shader                                                                                        ) \
    X( glAttachShader,             void,         GLuint program, GLuint shader                                                                        ) \
    X( glDeleteShader,             void,         GLuint shader                                                                                        ) \
    X( glCreateProgram,            GLuint,       void                                                                                                 ) \
+   X( glGetShaderiv,              void,         GLuint shader, GLenum pname, GLint *params                                                           ) \
+   X( glGetShaderInfoLog,         void,         GLuint shader, GLsizei maxLength, GLsizei *length, GLchar *infoLog                                   ) \
+   X( glGetProgramInfoLog,        void,         GLuint program, GLsizei maxLength, GLsizei *length, GLchar *infoLog                                  ) \
    X( glLinkProgram,              void,         GLuint program                                                                                       ) \
    X( glUseProgram,               void,         GLuint program                                                                                       ) \
    X( glDeleteProgram,            void,         GLuint program                                                                                       ) \
@@ -1180,6 +1246,11 @@ uint64_t GLutil_get_time_nanos(void)
     return t;
 }
 
+float GLutil_get_time_secs(GLutil* glutil)
+{
+    return ( (float)glutil->cur_t_nanos / 1000.0f / 1000.0f / 1000.0f );
+}
+
 uint64_t GLutil_frame_delta_nanos(GLutil *glutil)
 {
     return glutil->dt_nanos;
@@ -1218,10 +1289,6 @@ bool GLutil_next_event(GLutil* glutil, XEvent* event)
     return XCheckMaskEvent( glutil->display, ALL_INPUT_MASKS , event );
 }
 
-float GLutil_t_secs(GLutil* glutil)
-{
-    return ( (float)glutil->cur_t_nanos / 1000.0f / 1000.0f / 1000.0f );
-}
 
 
 /*******************************************************************************
@@ -1786,14 +1853,43 @@ void GLutil_rect(GLutil_Vec2f topleft, float w, float h, GLutil_Color clr)
 
 
 
- /*******************************************************************************
- *                             SHADERS                                         *
- *******************************************************************************/
-
-GLuint GLutil_load_shader(const char* name, GLutil_ShaderType type)
+/*******************************************************************************
+*                             SHADERS                                          *
+********************************************************************************/
+GLutil_ShaderProgram GLutil_shader_new(const char* vert_shader, const char* frag_shader)
 {
-    GLuint shader_id = glCreateShader(type); GLUTIL_CHECK_GL_ERROR();
+    GLutil_ShaderProgram shader = {};
 
+    shader.vert_shader_filename = vert_shader; // salvar o nome pra bom error reporting
+    GLuint vs_id = GLutil_shader_load_vert(vert_shader);
+        
+    shader.frag_shader_filename = frag_shader; // salvar o nome pra bom error reporting
+    GLuint fs_id = GLutil_shader_load_frag(frag_shader);
+
+    shader.id = glCreateProgram();
+    glAttachShader(shader.id, vs_id); GLUTIL_CHECK_GL_ERROR();
+    glAttachShader(shader.id, fs_id); GLUTIL_CHECK_GL_ERROR();
+    glLinkProgram(shader.id); GLUTIL_CHECK_GL_ERROR();
+    GLutil_check_shader_compilation_error(shader.id, "<anonymous_shader_program>", GLUTIL_PROGRAM_SHADER );
+    glDeleteShader(vs_id); GLUTIL_CHECK_GL_ERROR();
+    glDeleteShader(fs_id); GLUTIL_CHECK_GL_ERROR();
+    return shader;
+}
+
+GLuint GLutil_shader_load_vert(const char* name)
+{
+    return GLutil_shader_load(name, GLUTIL_VERT_SHADER);
+}
+
+GLuint GLutil_shader_load_frag(const char* name)
+{
+    return GLutil_shader_load(name, GLUTIL_FRAG_SHADER);
+}
+
+GLuint GLutil_shader_load(const char* name, GLutil_ShaderType type)
+{
+    printf("Compiling Shader '%s'\n", name);
+    GLuint shader_id = glCreateShader(type); GLUTIL_CHECK_GL_ERROR();
     FILE* f = fopen(name, "r");
     if (f == NULL) {
         printf(
@@ -1817,31 +1913,120 @@ GLuint GLutil_load_shader(const char* name, GLutil_ShaderType type)
     free(data);
     
     glCompileShader(shader_id); GLUTIL_CHECK_GL_ERROR();
-
+    check_shader_compilation_error(shader_id, name, type);
+    printf("       ╰─ OK.\n");
     return shader_id;
 }
 
 
-void GLutil_default_shaders(GLutil_ObjData* obj)
+void GLutil_check_shader_compilation_error_(GLuint shader_id, const char* shader_name, GLutil_ShaderType type, int line, const char* file, const char* func)
 {
-    if (obj->shader_program != (GLuint)-1) {
-        glDeleteProgram(obj->shader_program); GLUTIL_CHECK_GL_ERROR();
+
+    // @FROM: adaptado de https://learnopengl.com/code_viewer_gh.php?code=includes/learnopengl/shader_s.h 
+    int success;
+    char info_log[1024];
+    if (type != GLUTIL_PROGRAM_SHADER) {
+        glGetShaderiv(shader_id, GL_COMPILE_STATUS, &success);
+        if (!success) {
+            glGetShaderInfoLog(shader_id, 1024, NULL, info_log);
+            fprintf(stderr, "%d:%s:%s [ERROR] Compilation of Shader '%s' failed: %s\n", line, file, func, shader_name, info_log);
+            exit(6);
+        }
     }
-
-    GLuint shader = glCreateProgram(); GLUTIL_CHECK_GL_ERROR();
-    GLuint vs_id  = GLutil_load_shader(DEFAULT_VERT_SHADER_PATH, GLUTIL_VERT_SHADER); GLUTIL_CHECK_GL_ERROR();
-    GLuint fs_id  = GLutil_load_shader(DEFAULT_FRAG_SHADER_PATH, GLUTIL_FRAG_SHADER); GLUTIL_CHECK_GL_ERROR();
-
-    glAttachShader(shader, vs_id); GLUTIL_CHECK_GL_ERROR();
-    glAttachShader(shader, fs_id); GLUTIL_CHECK_GL_ERROR();
-    glLinkProgram(shader); GLUTIL_CHECK_GL_ERROR();
-    glDeleteShader(vs_id); GLUTIL_CHECK_GL_ERROR();
-    glDeleteShader(fs_id); GLUTIL_CHECK_GL_ERROR();
-
-    // @TODO: error handling
-    obj->shader_program = shader;
-    printf("Generated Default Shader with id = %u\n", shader);
+    else {
+        glGetProgramiv(shader_id, GL_LINK_STATUS, &success);
+        if (!success) {
+            glGetProgramInfoLog(shader_id, 1024, NULL, info_log);
+            fprintf(stderr, "%d:%s:%s [ERROR] Linking of Shader '%s' failed: %s\n", line, file, func, shader_name, info_log);
+            exit(7);
+        }
+    }
 }
+
+
+Shader GLutil_default_shaders(void)
+{
+    static Shader default_shader = { .id = -1 };
+    if ( default_shader.id == -1 ) {
+        default_shader = GLutil_shader_new(GLUTIL_DEFAULT_VERT_SHADER_PATH, GLUTIL_DEFAULT_FRAG_SHADER_PATH);
+        printf("Generated Default Shader with id = %u\n", default_shader.id);
+    } else {
+        printf("Reusing Default Shader with id = %u\n", default_shader.id);
+    }
+    return default_shader;
+}
+
+void GLutil_shader_use(GLutil_ShaderProgram shader)
+{
+    glUseProgram(shader.id);
+    GLUTIL_CHECK_GL_ERROR();
+}
+
+void GLutil_shader_add_int(GLutil_ShaderProgram shader, const char* name, int value)
+{
+    glUniform1i(glGetUniformLocation(shader.id, name), value);
+    GLUTIL_CHECK_GL_ERROR();
+}
+
+void GLutil_shader_add_float(GLutil_ShaderProgram shader, const char* name, float value)
+{
+    glUniform1f(glGetUniformLocation(shader.id, name), value);
+    GLUTIL_CHECK_GL_ERROR();
+}
+
+
+void GLutil_shader_add_vec3f(GLutil_ShaderProgram shader, const char* name, GLutil_Vec3f value)
+{
+    glUniform3fv(glGetUniformLocation(shader.id, name), 1, (float*)&value);
+    GLUTIL_CHECK_GL_ERROR();
+}
+
+void GLutil_shader_add_glcolor(GLutil_ShaderProgram shader, const char* name, GLutil_GLColor value)
+{
+    glUniform3fv(glGetUniformLocation(shader.id, name), 1, (float*)&value);
+    GLUTIL_CHECK_GL_ERROR();
+}
+
+void GLutil_shader_add_vec4f(GLutil_ShaderProgram shader, const char* name, GLutil_Vec4f value)
+{
+    glUniform4fv(glGetUniformLocation(shader.id, name), 1, (float*)&value);
+    GLUTIL_CHECK_GL_ERROR();
+}
+
+void GLutil_shader_add_quaternion(GLutil_ShaderProgram shader, const char* name, GLutil_Quaternion value)
+{
+    glUniform4fv(glGetUniformLocation(shader.id, name), 1, (float*)&value);
+    GLUTIL_CHECK_GL_ERROR();
+}
+
+
+void GLutil_shader_add_mat3f(GLutil_ShaderProgram shader, const char* name, GLutil_Mat3x3f value)
+{
+    glUniformMatrix3fv(
+        glGetUniformLocation(shader.id, name),
+        1, GL_FALSE, value.data
+    );
+    GLUTIL_CHECK_GL_ERROR();
+}
+
+void GLutil_shader_add_mat4f(GLutil_ShaderProgram shader, const char* name, GLutil_Mat4x4f value)
+{
+    glUniformMatrix4fv(
+        glGetUniformLocation(shader.id, name),
+        1, GL_FALSE, value.data
+    );
+    GLUTIL_CHECK_GL_ERROR();
+}
+
+void GLutil_shader_add_mat4f_transposed(GLutil_ShaderProgram shader, const char* name, GLutil_Mat4x4f value)
+{
+    glUniformMatrix4fv(
+        glGetUniformLocation(shader.id, name),
+        1, GL_TRUE, value.data
+    );
+    GLUTIL_CHECK_GL_ERROR();
+}
+
 
 /*******************************************************************************
  *                               CAMERA                                        *
@@ -1967,10 +2152,17 @@ GLutil_Camera GLutil_camera_orbit(GLutil_Camera camera, float theta, float phi)
 /*******************************************************************************
  *                            LIGHTING                                         *
 *******************************************************************************/
-void GLutil_add_light(GLutil* glutil, GLutil_PointLight light) 
+int GLutil_add_light(GLutil* glutil, GLutil_PointLight light) 
 {
+    // Retorna o índice da instância de light no vec de lights
     carr_vec_append(&glutil->lights, light);
-    return;
+    return glutil->lights.len - 1;
+}
+
+GLutil_PointLight* GLutil_get_light(GLutil* glutil, int light_id) 
+{
+    // Retorna o pointer pra instância de light no vec de lights
+    return &glutil->lights.items[light_id];
 }
 
 
@@ -2093,6 +2285,8 @@ typedef struct {
 
 ObjData GLutil_load_obj_file(const char* file_path)
 {
+    printf("Loading Obj Data from '%s'\n", file_path);
+
     ObjData obj = {0};
 
     Vertices verts = {0};
@@ -2130,9 +2324,6 @@ ObjData GLutil_load_obj_file(const char* file_path)
             continue;
 
         CarrStringView tag = carr_sv_chop_by_space(&line); 
-        printf("Parsing OBJ Tag: %.*s\n", (int)tag.len, tag.data);
-
-
         if ( carr_sv_is_equal(tag, OBJECT_TAG) || carr_sv_is_equal(tag, SMOOTH_TAG)) {
             printf("[WARNING] Vertex Data not supported: '%.*s'\n", (int)tag.len, tag.data);
         } else if ( carr_sv_is_equal(tag, NORMAL_TAG) ) {
@@ -2269,8 +2460,9 @@ ObjData GLutil_load_obj_file(const char* file_path)
     obj.vertices   = verts;
     obj.faces      = faces;
 
-
-    default_shaders(&obj);
+    printf("       ╰─ OK.\n");
+    printf("Attaching Default Shaders to Obj Data.\n");
+    obj.shader_program = default_shaders();
     GLutil_load_obj_to_GPU(&obj);
     
     return obj;
@@ -2278,6 +2470,7 @@ ObjData GLutil_load_obj_file(const char* file_path)
 
 void GLutil_load_obj_to_GPU(GLutil_ObjData* obj)
 {
+    printf("Loading Obj Data to GPU.\n");
     // create GPU buffers for vertex and indexes data
     glGenVertexArrays(1, &obj->vao_id); // VAO => Stores Vertex Attributes Layout and overall configuration of other buffers
     glGenBuffers(1,      &obj->vbo_id); // VBO => Stores Vertex Attributes Raw Data
@@ -2300,7 +2493,6 @@ void GLutil_load_obj_to_GPU(GLutil_ObjData* obj)
     // in the GLutil_Vertex struct so that it's usable from the shaders
     GLuint attrb_loc = 0;
 
-
     // @TODO: o cálculo da quantidadde de elemenntos por atributo vai quebrar caso se altere o tipo do elemento individual.
     //        isto é, seria bom descobrir como fazer algo que não depende explicitamente do tipo 'float' ou qualquer outro tipo hardcoded.
     //        algo como:
@@ -2321,12 +2513,16 @@ void GLutil_load_obj_to_GPU(GLutil_ObjData* obj)
     // bind default buffer and vertex array as a cleanup
     glBindBuffer(GL_ARRAY_BUFFER, 0); 
     glBindVertexArray(0); 
+
+    GLUTIL_CHECK_GL_ERROR();
+    printf("       ╰─ OK.\n");
 }
 
 
 
 GLuint GLutil_load_texture(const char* texture_name)
 {
+    printf("Loading Texture '%s'\n", texture_name);
     GLuint texture_id;
     int img_width, img_height, n;
     unsigned char *data = stbi_load(texture_name, &img_width, &img_height, &n, 0);
@@ -2344,7 +2540,6 @@ GLuint GLutil_load_texture(const char* texture_name)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR); GLUTIL_CHECK_GL_ERROR();
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); GLUTIL_CHECK_GL_ERROR();
 
-    // glActiveTexture(GL_TEXTURE0);
     glTexImage2D(
         GL_TEXTURE_2D, 0, GL_RGB,
         img_width, img_height,
@@ -2355,6 +2550,7 @@ GLuint GLutil_load_texture(const char* texture_name)
 
     stbi_image_free(data);
 
+    printf("       ╰─ OK.\n");
     return texture_id;
 }
 
@@ -2377,79 +2573,66 @@ GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj)
     return m;
 }
 
-
-// @TODO: todos os uniformes do shader estão sendo passados manualmente nessa função
-//        seria bom ter umas funções auxiliares pra poder compactar um pouco esse código
-//        algo como GLutil_add_uniform_int(GLuint shader, int value) que faz a checagem dos erros
-//        do OpenGL e todas as adaptações de nomes e tipos necessárias
+/*
 void GLutil_render_model(GLutil* glutil, GLutil_Model* model)
 {
-    glUseProgram(model->geometry->shader_program); CHECK_GL_ERROR();
-    glBindVertexArray(model->geometry->vao_id); CHECK_GL_ERROR();
+    GLutil_ShaderProgram shader = model->geometry->shader_program;
+    GLutil_shader_use(shader);
+    glBindVertexArray(model->geometry->vao_id); 
+    CHECK_GL_ERROR();
+    GLuint shader_id = shader.id;
 
-    GLuint model_loc = glGetUniformLocation(model->geometry->shader_program, "model_mat");
-    CHECK_GL_ERROR();
-    glUniformMatrix3fv(model_loc, 1, GL_FALSE, GLutil_model_matrix(glutil->camera).data);
-    CHECK_GL_ERROR();
 
-    GLuint view_loc = glGetUniformLocation(model->geometry->shader_program, "view_mat");
-    CHECK_GL_ERROR();
-    glUniformMatrix4fv(view_loc, 1, GL_TRUE, GLutil_view_matrix(glutil->camera).data);
-    CHECK_GL_ERROR();
+    GLutil_shader_add_float(shader, "t", GLutil_get_time_secs(glutil));
 
-    GLutil_Mat4x4f projection = GLutil_projection_matrix(glutil->camera, glutil->winwidth / (float)glutil->winheight);
-    GLuint proj_loc = glGetUniformLocation(model->geometry->shader_program, "proj_mat");
-    CHECK_GL_ERROR();
-    glUniformMatrix4fv(proj_loc, 1, GL_TRUE, projection.data);
-    CHECK_GL_ERROR();
+    GLutil_shader_add_mat3f(shader, "model_mat", GLutil_model_matrix(glutil->camera));
+    GLutil_shader_add_mat4f_transposed(shader, "view_mat", GLutil_view_matrix(glutil->camera));
+    GLutil_shader_add_mat4f_transposed(shader, "proj_mat", GLutil_projection_matrix(glutil->camera, glutil->winwidth / (float)glutil->winheight));
 
-    GLuint t_loc = glGetUniformLocation(model->geometry->shader_program, "t"); CHECK_GL_ERROR();
-    float t_secs = glutil->cur_t_nanos / 1000.0f / 1000.0f / 1000.0f;  // 1 sec = 10^9 nanosecs
-    glUniform1f(t_loc, t_secs); CHECK_GL_ERROR();
 
-    GLuint scale_loc = glGetUniformLocation(model->geometry->shader_program, "scale"); CHECK_GL_ERROR();
+    GLuint scale_loc = glGetUniformLocation(shader_id, "scale"); CHECK_GL_ERROR();
     glUniform1f(scale_loc, model->scale); CHECK_GL_ERROR();
 
     const float wpos[3] = { model->world_pos.x, model->world_pos.y, model->world_pos.z };
-    GLuint wpos_loc = glGetUniformLocation(model->geometry->shader_program, "world_pos"); CHECK_GL_ERROR();
+    GLuint wpos_loc = glGetUniformLocation(shader_id, "world_pos"); CHECK_GL_ERROR();
     glUniform3fv(wpos_loc, 1, wpos); CHECK_GL_ERROR();
 
     const float orient[4] =  { model->orientation.x, model->orientation.y, model->orientation.z, model->orientation.w };
-    GLuint orient_loc = glGetUniformLocation(model->geometry->shader_program, "orientation"); CHECK_GL_ERROR();
+    GLuint orient_loc = glGetUniformLocation(shader_id, "orientation"); CHECK_GL_ERROR();
     glUniform4fv(orient_loc, 1, orient); CHECK_GL_ERROR();
 
-    GLuint texture_loc = glGetUniformLocation(model->geometry->shader_program, "the_texture"); CHECK_GL_ERROR();
+    GLuint texture_loc = glGetUniformLocation(shader_id, "the_texture"); CHECK_GL_ERROR();
     glUniform1i(texture_loc, 0); CHECK_GL_ERROR();
 
-    GLuint campos_loc = glGetUniformLocation(model->geometry->shader_program, "camera_pos"); CHECK_GL_ERROR();
+    GLuint campos_loc = glGetUniformLocation(shader_id, "camera_pos"); CHECK_GL_ERROR();
     glUniform3fv(campos_loc, 1, (float*)&glutil->camera.pos);
 
-    GLuint lightscount_loc = glGetUniformLocation(model->geometry->shader_program, "lights_count"); CHECK_GL_ERROR();
+    GLuint lightscount_loc = glGetUniformLocation(shader_id, "lights_count"); CHECK_GL_ERROR();
     glUniform1i(lightscount_loc, glutil->lights.len);
     for (size_t i = 0; i < glutil->lights.len; ++i) {
         char posstr[50];
         sprintf(posstr, "lights[%ld].pos", i);
-        GLuint lightpos_loc = glGetUniformLocation(model->geometry->shader_program, posstr); CHECK_GL_ERROR();
+        GLuint lightpos_loc = glGetUniformLocation(shader_id, posstr); CHECK_GL_ERROR();
         glUniform3fv(lightpos_loc, 1, (float*)&glutil->lights.items[i].pos); CHECK_GL_ERROR();
 
         char clrstr[50];
         sprintf(clrstr, "lights[%ld].clr", i);
-        GLuint lightclr_loc = glGetUniformLocation(model->geometry->shader_program, clrstr); CHECK_GL_ERROR();
+        GLuint lightclr_loc = glGetUniformLocation(shader_id, clrstr); CHECK_GL_ERROR();
         glUniform3fv(lightclr_loc, 1, (float*)&glutil->lights.items[i].clr); CHECK_GL_ERROR();
 
         char shinstr[50];
         sprintf(shinstr, "lights[%ld].shine", i);
-        GLuint lightshin_loc = glGetUniformLocation(model->geometry->shader_program, shinstr); CHECK_GL_ERROR();
+        GLuint lightshin_loc = glGetUniformLocation(shader_id, shinstr); CHECK_GL_ERROR();
         glUniform1f(lightshin_loc, glutil->lights.items[i].shine); CHECK_GL_ERROR();
 
         char intenstr[50];
         sprintf(intenstr, "lights[%ld].intensity", i);
-        GLuint lightinten_loc = glGetUniformLocation(model->geometry->shader_program, intenstr); CHECK_GL_ERROR();
+        GLuint lightinten_loc = glGetUniformLocation(shader_id, intenstr); CHECK_GL_ERROR();
         glUniform1f(lightinten_loc, glutil->lights.items[i].intensity); CHECK_GL_ERROR();
     }
 
 
-    GLuint has_texture_loc = glGetUniformLocation(model->geometry->shader_program, "has_texture"); CHECK_GL_ERROR();
+    GLuint has_texture_loc = glGetUniformLocation(shader_id, "has_texture"); CHECK_GL_ERROR();
     if ( model->texture_id == (GLuint)-1 ) {
         glUniform1i(has_texture_loc, false); CHECK_GL_ERROR();
     } else {
@@ -2460,6 +2643,66 @@ void GLutil_render_model(GLutil* glutil, GLutil_Model* model)
     glDrawElements(GL_TRIANGLES, model->geometry->faces.len, GL_UNSIGNED_INT, 0); CHECK_GL_ERROR();
     // printf("[DRAW] Error: %s\n", glErrorNames[glGetError()]);
 }
+*/
+
+// /* [
+void GLutil_render_model(GLutil* glutil, GLutil_Model* model)
+{
+    GLutil_ShaderProgram shader = model->geometry->shader_program;
+    GLutil_shader_use(shader);
+    glBindVertexArray(model->geometry->vao_id); 
+    CHECK_GL_ERROR();
+
+    GLutil_shader_add_float(shader, "t", GLutil_get_time_secs(glutil));
+
+    GLutil_shader_add_mat3f(shader, "model_mat", GLutil_model_matrix(glutil->camera));
+    GLutil_shader_add_mat4f_transposed(shader, "view_mat", GLutil_view_matrix(glutil->camera));
+    GLutil_shader_add_mat4f_transposed(shader, "proj_mat", GLutil_projection_matrix(glutil->camera, glutil->winwidth / (float)glutil->winheight));
+
+    GLutil_shader_add_float(shader, "scale", model->scale);
+    GLutil_shader_add_vec3f(shader, "world_pos", model->world_pos);
+    GLutil_shader_add_quaternion(shader, "orientation", model->orientation);
+
+
+#define DIFFUSE_TEXTURE_ID    GL_TEXTURE0
+#define DIFFUSE_TEXTURE_INDEX 0
+
+    GLutil_shader_add_int(shader, "the_texture", DIFFUSE_TEXTURE_INDEX);
+    GLutil_shader_add_vec3f(shader, "camera_pos", glutil->camera.pos);
+    GLutil_shader_add_int(shader, "lights_count", glutil->lights.len);
+
+    for (size_t i = 0; i < glutil->lights.len; ++i) {
+        char posstr[50];
+        sprintf(posstr, "lights[%ld].pos", i);
+        GLutil_shader_add_vec3f(shader, posstr, glutil->lights.items[i].pos);
+
+        char clrstr[50];
+        sprintf(clrstr, "lights[%ld].clr", i);
+        GLutil_shader_add_glcolor(shader, clrstr, glutil->lights.items[i].clr);
+
+        char shinstr[50];
+        sprintf(shinstr, "lights[%ld].shine", i);
+        GLutil_shader_add_float(shader, shinstr, glutil->lights.items[i].shine);
+
+        char intenstr[50];
+        sprintf(intenstr, "lights[%ld].intensity", i);
+        GLutil_shader_add_float(shader, intenstr, glutil->lights.items[i].intensity);
+    }
+
+
+    if ( model->texture_id == (GLuint)-1 ) {
+        GLutil_shader_add_int(shader, "has_texture", false);
+    } else {
+        GLutil_shader_add_int(shader, "has_texture", true);
+        glActiveTexture(DIFFUSE_TEXTURE_ID); CHECK_GL_ERROR();
+        glBindTexture(GL_TEXTURE_2D, model->texture_id); CHECK_GL_ERROR();
+    }
+
+    glDrawElements(GL_TRIANGLES, model->geometry->faces.len, GL_UNSIGNED_INT, 0); CHECK_GL_ERROR();
+    // printf("[DRAW] Error: %s\n", glErrorNames[glGetError()]);
+
+}
+// ] */
 
 #endif // GLUTIL_H_
 
