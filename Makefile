@@ -20,15 +20,19 @@ quadtree:
 	$(OUT_DIR)quad
 
 cube:
-	gcc -o $(OUT_DIR)cube examples/100-textured_cube/main.c $(LINKER_FLAGS)
+	gcc -o $(OUT_DIR)cube examples/100-textured_cube/texcube.c $(LINKER_FLAGS)
 	$(OUT_DIR)cube
 
 ping-pong:
-	gcc -o $(OUT_DIR)ping-pong examples/200-ping-pong/main.c $(LINKER_FLAGS)
+	gcc -o $(OUT_DIR)ping-pong examples/200-ping-pong/pong.c $(LINKER_FLAGS)
 	$(OUT_DIR)ping-pong
 
 cubes:
-	gcc -o $(OUT_DIR)cubes examples/150-cubes_and_camera/main.c $(LINKER_FLAGS)
+	gcc -o $(OUT_DIR)cubes examples/150-cubes_and_camera/cubes_camera.c $(LINKER_FLAGS)
 	$(OUT_DIR)cubes
+
+shadow:
+	gcc -o $(OUT_DIR)shadow examples/250-shadow/shadow.c $(LINKER_FLAGS)
+	$(OUT_DIR)shadow
 
 

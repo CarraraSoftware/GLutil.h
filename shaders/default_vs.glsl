@@ -12,6 +12,7 @@ out vec3 vs_color;
 out vec2 vs_texture_pos;
 out vec3 vs_normal;
 out vec3 vs_camera_pos;
+out vec4 vs_lightspace_pos;
 
 uniform float t;
 uniform float scale;
@@ -21,6 +22,7 @@ uniform quaternion orientation;
 uniform mat3 model_mat;
 uniform mat4 view_mat;
 uniform mat4 proj_mat;
+uniform mat4 light_mat;
 
 uniform vec3 camera_pos;
 
@@ -93,7 +95,6 @@ quaternion quat_inverse(quaternion q)
     return quat_conjugate(q) / quat_sqlength(q);
 }
 
-
 vec3 vec3_rotate_by_quat(vec3 v, quaternion q)
 {
     quaternion vquat    = quat_from_vec3(v);
@@ -113,25 +114,17 @@ void main() {
     vec3 pos0    = vec3_rotate_by_quat( pos, orientation    );
     vec3 normal0 = vec3_rotate_by_quat( normal, orientation );
 
-    vec3 pos1 = scale * pos0;
+    vec3 pos1 =  world_pos + (pos * scale);
+    vs_pos = pos1;
 
+    vec4 pos2 = vec4(model_mat * pos1, 1.0f);
 
-    pos1 = world_pos + pos1;
-    vec3 new_pos = model_mat * pos1;
-    vs_pos = new_pos;
+    gl_Position = proj_mat * view_mat *  pos2;
+    vec4 light_pos = light_mat * pos2;
 
-    float x = new_pos.x;
-    float y = new_pos.y;
-    float z = new_pos.z;
-
-    float w = 1.0f;
-    vec4 pos4 = vec4(x, y, z, w);
-    pos4 = view_mat * pos4;
-    pos4 = proj_mat * pos4;
-
-
-    gl_Position = pos4;
-    vs_color = color;
-    vs_texture_pos = tex_pos;
-    vs_normal = normal0;
+    vs_color           = color;
+    vs_texture_pos     = tex_pos;
+    vs_normal          = normal;
+    vs_camera_pos      = camera_pos;
+    vs_lightspace_pos  = light_pos;
 };

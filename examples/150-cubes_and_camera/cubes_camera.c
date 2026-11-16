@@ -11,11 +11,11 @@
 
 #define CUBES_COUNT 20000
 
-#define CUBE_MIN_SCALE  1000.0f
-#define CUBE_MAX_SCALE  5000.0f
+#define CUBE_MIN_SCALE  1.0f
+#define CUBE_MAX_SCALE  50.0f
 
-#define CUBE_MIN_POS -10000.0f
-#define CUBE_MAX_POS  10000.0f
+#define CUBE_MIN_POS -100.0f
+#define CUBE_MAX_POS  100.0f
 
 
 #define STEP_SIZE 2.0f

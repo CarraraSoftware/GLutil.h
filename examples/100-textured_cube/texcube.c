@@ -14,7 +14,9 @@ const char* MONKEY_MODEL_FILE_PATH      = ASSETS_PATH"/monkey.obj";
 const char* CUBE_WITH_NORMALS_FILE_PATH = ASSETS_PATH"/normal.obj";
 const char* WOODBOX_TEXTURE_FILE_PATH   = ASSETS_PATH"/texture.jpg";
 
-#define STEP_SIZE 5.0f
+const char* FLOOR_MODEL                 = ASSETS_PATH"/floortile.obj";
+const char* FLOOR_TEXTURE               = ASSETS_PATH"/Cobblestone.png";
+
 
 void update_camera(GLutil* glutil)
 {
@@ -31,6 +33,7 @@ void update_camera(GLutil* glutil)
     Vec3f campos = glutil->camera.pos;
     Vec3f camtrg = glutil->camera.target;
 
+#define STEP_SIZE 5.0f
     if ( glutil->input.arrow_up.pressed ) {
         Vec3f dir = Vec3f_sub(camtrg, campos);
         dir = Vec3f_normalize(dir);
@@ -50,6 +53,7 @@ void update_camera(GLutil* glutil)
 }
 
 
+const float UNIT = 1.0f;
 
 int main(void) {
     GLutil glutil = {0};
@@ -64,35 +68,36 @@ int main(void) {
     Model cube = model_from_obj(&obj);
     if ( WOODBOX_TEXTURE_FILE_PATH ) cube.texture_id = load_texture(WOODBOX_TEXTURE_FILE_PATH);
     cube.world_pos = (Vec3f) { 
-        .x = 1000.0f,
-        .y = 1000.0f,
-        .z = -500.0f 
+        .x =  0.0f,
+        .y =  0.0f,
+        .z =  0.0f,
     };
+    cube.scale = UNIT;
+    printf("Cube Shaders: '%s' and '%s'\n", obj.shader_program.vert_shader_filename, obj.shader_program.frag_shader_filename);
 
-    // flashlight style light point
+    // flashlight style light point, attached to camera
     GLColor light_clr = (GLColor) { 1.0f, 1.0f, 1.0f };
-    GLutil_PointLight l = (GLutil_PointLight) {
+    int flashlight = add_light(&glutil, (GLutil_PointLight) {
         .pos = glutil.camera.pos,
         .clr = light_clr,
         .shine = 1.0f,
         .intensity = 10000000.0f,
-    };
-    vec_append(&glutil.lights, l);
-
+    });
 
 
     // bare bones ball with only vertex data for representing the light source's position
     ObjData ball_obj = load_obj_file(BALL_FILE_PATH);
     Model ball = model_from_obj(&ball_obj);
+    printf("Ball Obj Shaders: '%s' and '%s'\n", ball_obj.shader_program.vert_shader_filename, ball_obj.shader_program.frag_shader_filename);
 
     ball.world_pos = (Vec3f) {
-        .x = 12000.0f, 
-        .y = 0.0f,
-        .z = 12000.0f, 
+        .x = 1.5f * UNIT, 
+        .y = 1.5f * UNIT,
+        .z = 1.5f * UNIT,  
     };
-    ball.scale = 1000.0f;
+    ball.scale = UNIT / 10.0f;
 
-    GLColor ball_clr = (GLColor) { 0.8f, 0.9f, 0.3f };
+    GLColor ball_clr = (GLColor) { 0.8f, 0.8f, 0.8f };
 
     for ( int i = 0; i < ball.geometry->vertices.len; ++i ) {
         Vertex* v = &ball.geometry->vertices.items[i];
@@ -100,18 +105,22 @@ int main(void) {
     }
 
 
-    GLutil_PointLight l2 = (GLutil_PointLight) {
+    int ball_light = add_light(&glutil, (GLutil_PointLight) {
         .pos = ball.world_pos,
         .clr = ball_clr,
         .shine = 2.0f,
         .intensity = 50000.0f,
-    };
-    vec_append(&glutil.lights, l2);
+    });
 
 
-    glutil.camera.pos.z = 100.0f;
-    glutil.camera.pos.y = 100.0f;
-    glutil.camera.pos.x = 100.0f;
+    ObjData floor_mesh     = load_obj_file(FLOOR_MODEL);
+    Model   floor_tile     = model_from_obj(&floor_mesh);
+    floor_tile.texture_id = load_texture(FLOOR_TEXTURE);
+
+
+    glutil.camera.pos.z = UNIT/100.0f;
+    glutil.camera.pos.y = UNIT/100.0f;
+    glutil.camera.pos.x = UNIT/100.0f;
 
     for (;;) {
         uint64_t dt = begin_frame(&glutil);
@@ -122,22 +131,35 @@ int main(void) {
         update_camera(&glutil);
 
         if ( glutil.lights.len ) {
-            glutil.lights.items[0].pos = glutil.camera.pos;
-            glutil.lights.items[0].shine = 8.0f;
-            glutil.lights.items[0].intensity = 100.0f;
+            get_light(&glutil, flashlight)->pos       = glutil.camera.pos;
+            get_light(&glutil, flashlight)->shine     = 8.0f;
+            get_light(&glutil, flashlight)->intensity = 100.0f;
         }
+
 
         Quaternion rotation = quat_from_angle_axis( 0.01, (Vec3f){ 0.0f, 1.0f, 0.0f } );
         cube.orientation = quat_mul(cube.orientation, rotation);
 
-
         Vec3f axis = { 0.0f, 1.0f, 0.0f };
         float angle = -0.01f;
         ball.world_pos = Vec3f_rotate(ball.world_pos, angle, axis);
-        glutil.lights.items[1].pos = ball.world_pos;
+        get_light(&glutil, ball_light)->pos = ball.world_pos;
 
 
         clear_bg(BLACK);
+
+        const float floor_start = -10 * UNIT;
+        const float floor_end   =  10 * UNIT;
+        floor_tile.scale = UNIT;
+        floor_tile.world_pos = (Vec3f) { 0.0f, -2.0f*UNIT, 0.0f  };
+
+        for ( float floor_z = floor_start; floor_z < floor_end; floor_z += UNIT)
+            for ( float floor_x = floor_start; floor_x < floor_end; floor_x += UNIT) {
+                floor_tile.world_pos.x = floor_x;
+                floor_tile.world_pos.z = floor_z;
+                render_model(&glutil, &floor_tile);
+            }
+        // render_model(&glutil, &floor_tile);
         render_model(&glutil, &cube);
         render_model(&glutil, &ball);
 
