@@ -383,7 +383,6 @@ typedef struct {
     GLutil_InputState space_bar;
 } GLutil_Input;
 
-
 // .
 // .
 // .
@@ -524,6 +523,7 @@ float GLutil_Vec4f_dot(GLutil_Vec4f a, GLutil_Vec4f b);
 GLutil_Mat2x2f GLutil_Mat2x2f_mul(GLutil_Mat2x2f A, GLutil_Mat2x2f B);
 GLutil_Mat3x3f GLutil_Mat3x3f_mul(GLutil_Mat3x3f A, GLutil_Mat3x3f B);
 GLutil_Mat4x4f GLutil_Mat4x4f_mul(GLutil_Mat4x4f a, GLutil_Mat4x4f b);
+GLutil_Mat4x4f GLutil_Mat4x4f_transpose(GLutil_Mat4x4f A);
 
 // quaternions
 GLutil_Quaternion GLutil_unit_quaternion(); // { 1.0f, 0.0f, 0.0f, 0.0f } == quaternion "padrão" que representa ausência de rotação alguma
@@ -705,8 +705,8 @@ GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
 #define Color   GLutil_Color
 #define GLColor GLutil_GLColor
 
-#define ShaderType GLutil_ShaderType
-#define Shader     GLutil_ShaderProgram
+#define ShaderType    GLutil_ShaderType
+#define ShaderProgram GLutil_ShaderProgram
 
 #define Vec2i   GLutil_Vec2i
 #define Vec2f   GLutil_Vec2f
@@ -785,10 +785,10 @@ GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
 #define Vec4f_dot          GLutil_Vec4f_dot
 #define Vec4f_apply_mat4x4 GLutil_Vec4f_apply_mat4x4
 
-#define Mat2x2f_mul GLutil_Mat2x2f_mul
-#define Mat3x3f_mul GLutil_Mat3x3f_mul
-#define Mat4x4f_mul GLutil_Mat4x4f_mul
-
+#define Mat2x2f_mul       GLutil_Mat2x2f_mul
+#define Mat3x3f_mul       GLutil_Mat3x3f_mul
+#define Mat4x4f_mul       GLutil_Mat4x4f_mul
+#define Mat4x4f_transpose GLutil_Mat4x4f_transpose
 
 #define unit_quaternion      GLutil_unit_quaternion
 #define quat_from_angle_axis GLutil_quat_from_angle_axis
@@ -1663,6 +1663,33 @@ GLutil_Mat3x3f GLutil_Mat3x3f_mul(GLutil_Mat3x3f A, GLutil_Mat3x3f B)
 
 }
 
+GLutil_Mat4x4f GLutil_Mat4x4f_transpose(GLutil_Mat4x4f A)
+{
+    GLutil_Mat4x4f m;
+    m._11 = A.rows[0].x;
+    m._21 = A.rows[0].y;
+    m._31 = A.rows[0].z;
+    m._41 = A.rows[0].w;
+
+    m._12 = A.rows[1].x;
+    m._22 = A.rows[1].y;
+    m._32 = A.rows[1].z;
+    m._42 = A.rows[1].w;
+
+    m._13 = A.rows[2].x;
+    m._23 = A.rows[2].y;
+    m._33 = A.rows[2].z;
+    m._43 = A.rows[2].w;
+
+    m._14 = A.rows[3].x;
+    m._24 = A.rows[3].y;
+    m._34 = A.rows[3].z;
+    m._44 = A.rows[3].w;
+    
+    return m;
+}
+
+
 GLutil_Mat4x4f GLutil_Mat4x4f_mul(GLutil_Mat4x4f A, GLutil_Mat4x4f B)
 {
     // @FROM: https://github.com/tsoding/la/blob/master/la.h
@@ -1944,9 +1971,9 @@ void GLutil_check_shader_compilation_error_(GLuint shader_id, const char* shader
 }
 
 
-Shader GLutil_default_shaders(void)
+GLutil_ShaderProgram GLutil_default_shaders(void)
 {
-    static Shader default_shader = { .id = -1 };
+    static GLutil_ShaderProgram default_shader = { .id = -1 };
     if ( default_shader.id == -1 ) {
         default_shader = GLutil_shader_new(GLUTIL_DEFAULT_VERT_SHADER_PATH, GLUTIL_DEFAULT_FRAG_SHADER_PATH);
         printf("Generated Default Shader with id = %u\n", default_shader.id);
@@ -2036,9 +2063,9 @@ GLutil_Mat3x3f GLutil_model_matrix(GLutil_Camera cam)
 {
     return (GLutil_Mat3x3f) {
         .data = {                                    
-            1/500.0f, 0,        0, 
-            0,        1/500.0f, 0, 
-            0,        0,        1/500.0f    
+            1, 0, 0, 
+            0, 1, 0, 
+            0, 0, 1    
         }
     };
 }
@@ -2557,7 +2584,7 @@ GLuint GLutil_load_texture(const char* texture_name)
 GLutil_Model GLutil_make_model()
 {
     GLutil_Model m = (GLutil_Model) {
-        .scale       = 10000.0f,  // @TODO: encontrar valores mais razoáveis de escala padrão lol
+        .scale       = 1.0f,  // @TODO: encontrar valores mais razoáveis de escala padrão lol
         .world_pos   = { 0.0f, 0.0f, 0.0f },
         .orientation = GLutil_unit_quaternion(), // { 1.0f, 0.0f, 0.0f, 0.0f } = no rotation
         .geometry    = NULL,
@@ -2705,6 +2732,68 @@ void GLutil_render_model(GLutil* glutil, GLutil_Model* model)
 // ] */
 
 #endif // GLUTIL_H_
+
+
+/*
+ *
+ * Não sei onde colocar isso, mas é legal, e talvez faça algo isso eventualmente
+ *
+ */
+
+// Render Buffer for rendering stuff from the framebuffer
+// informações a respeito do depth buffer, e portanto não precisa renderizar nada
+// renderbuffer não é necessário para o shadowmap, pois a gente só quer
+
+/*
+GLuint renderbuffer;
+glGenRenderbuffers(1, &renderbuffer); CHECK_GL_ERROR();
+
+glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer); CHECK_GL_ERROR();
+glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, WINWIDTH, WINHEIGHT); CHECK_GL_ERROR();
+glBindRenderbuffer(GL_RENDERBUFFER, 0); CHECK_GL_ERROR(); // default renderbuffer
+
+glFramebufferRenderbuffer(
+    GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+    GL_RENDERBUFFER, renderbuffer
+); CHECK_GL_ERROR();
+
+GLenum fb_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+while ( fb_status != GL_FRAMEBUFFER_COMPLETE) {
+    printf("[ERROR] Framebuffer didn't complete.\n");
+    print_framebuffer_status(fb_status);
+    fb_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+}
+
+
+// Quad for rendering two triangles that take the whole screen
+
+    float quad_verts[] = { // vertex attributes for a quad that fills the entire screen in Normalized Device Coordinates.
+            // positions   // texCoords
+            -1.0f,  1.0f,  0.0f, 1.0f,
+            -1.0f, -1.0f,  0.0f, 0.0f,
+             1.0f, -1.0f,  1.0f, 0.0f,
+
+            -1.0f,  1.0f,  0.0f, 1.0f,
+             1.0f, -1.0f,  1.0f, 0.0f,
+             1.0f,  1.0f,  1.0f, 1.0f
+    };
+
+    // setup do quad vao
+    GLuint quad_vao, quad_vbo;
+    glGenVertexArrays(1, &quad_vao);
+    glGenBuffers(1, &quad_vbo);
+    glBindVertexArray(quad_vao);
+    glBindBuffer( GL_ARRAY_BUFFER, quad_vbo );
+    glBufferData( GL_ARRAY_BUFFER, sizeof(quad_verts), quad_verts, GL_STATIC_DRAW );
+    GLuint attrib_ptr = 0;
+    // pos, o primeiro par de floats por linha de quad_verts
+    glEnableVertexAttribArray(attrib_ptr);
+    glVertexAttribPointer(attrib_ptr++, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),  (void*)0);
+    // tex, o segunda par de floats por linha de quad_verts
+    glEnableVertexAttribArray(attrib_ptr);
+    glVertexAttribPointer(attrib_ptr++, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),  (void*)(2 * sizeof(float)));
+}
+*/
 
 
 
