@@ -78,9 +78,9 @@ void main()
 #endif
 
 
-    vec3 light_source = vec3(1.0, 1.0, 1.0);
+    vec3 light_source = vec3(0.5, 0.5, 0.5);
 
-    float ambient_intensity = 0.0;
+    float ambient_intensity = 0.2;
     vec3  ambient_color     = vec3(1.0, 1.0, 1.0);
     ambient_color *= ambient_intensity;
 
@@ -101,7 +101,7 @@ void main()
         float d = distance(light_pos, vs_pos);
         d = d == 0 ? 0.1f : d;
 
-        float diffuse_intensity = 0.0f; // light_intensity / (d*d);
+        float diffuse_intensity = 0.5f; // light_intensity / (d*d);
         vec3 light_dir  = normalize(light_pos - vs_pos);
         vec3 diffuse_color = max(dot(norm, light_dir), 0.0) * light_clr;
         diffuse_color *= diffuse_intensity;

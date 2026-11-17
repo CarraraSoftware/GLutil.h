@@ -148,7 +148,6 @@ int main(void) {
         compute_shadow_maps(&glutil, shadow_shader, 2, (Model*[]){ &floor_tile, &cube });
 
 
-
         clear_bg(BLACK);
 
         const float floor_start = -10.0f;

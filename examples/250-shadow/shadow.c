@@ -4,7 +4,7 @@
 #define GLUTIL_IMPLEMENTATION
 #include "../../glutil.h"
 
-#define TWOBALLS 1
+#define TWOBALLS 0
 
 
 #define WINWIDTH  800
@@ -53,78 +53,111 @@ int main(void)
     init(&g, WINWIDTH, WINHEIGHT);
     set_target_fps(&g, 60.0f);
 
-    g.camera.pos.z = 3.0f;
-    g.camera.pos.y = 2.0f;
+    g.camera.pos.z = 5.0f;
+    g.camera.pos.y = 3.0f;
 
     GLutil_ShaderProgram shadow_shader = shader_new("./shaders/shadow_vert.glsl", "./shaders/shadow_frag.glsl");
+    GLutil_ShaderProgram render_shader = shader_new("./shaders/default_vs.glsl", "./shaders/default_fs.glsl");
 
-    /********** FLOOR  ****************/
+
+    /********************** FLOOR  ********************************************/
     ObjData ground_obj = load_obj_file( ASSETS_PATH "/floortile.obj"); 
-    Model   ground     = model_from_obj(&ground_obj);
-    // ground.texture_id  = load_texture( ASSETS_PATH "/darkfloor.png");
-    ground.texture_id  = load_texture( ASSETS_PATH "/floortile.png");
-    ground.scale       = 5.0f;
-    ground.world_pos.y = -1.0f;
-    /*******************************************************/
+        ground_obj.shader_program = render_shader;
+    Model ground     = model_from_obj(&ground_obj);
+        ground.texture_id  = load_texture( ASSETS_PATH "/floortile.png");
+        ground.scale       = +5.0f;
+        ground.world_pos.y = -1.5f;
+    /**************************************************************************/
 
 
-    /********** CUBE ****************/
+    /********************** CUBE **********************************************/
     ObjData cube_obj = load_obj_file( ASSETS_PATH "/pinkube.obj");
-    Model   cube = model_from_obj(&cube_obj);
-    cube.texture_id = load_texture(ASSETS_PATH"/pinkube.jpg");
-    cube.world_pos.z =  0.0f;
-    cube.world_pos.y =  0.5f;
-    cube.scale       =  0.25f;
-    /*******************************************************/
+        cube_obj.shader_program = render_shader;
+    Model cube = model_from_obj(&cube_obj);
+        cube.texture_id  = load_texture(ASSETS_PATH"/pinkube.jpg");
+        cube.world_pos.z = +0.0f;
+        cube.world_pos.y = +0.5f;
+        cube.scale       = +1.0f;
+    /**************************************************************************/
 
 
-    /********** LIGHT BALL **********/
+    /******************* LIGHT BALL *******************************************/
     ObjData ball_obj = load_obj_file(ASSETS_PATH"/ball.obj");
+        ball_obj.shader_program = render_shader;
     Model   ball     = model_from_obj(&ball_obj);
     ball.world_pos   = (Vec3f) {
-        .x =  1.0f,
-        .y =  1.5f,
-        .z =  1.0f,
+        .x =  5.0f,
+        .y =  7.5f,
+        .z =  5.0f,
     };
-    ball.scale = 0.05f;
+    ball.scale = 1.0f;
 
     int light_id = add_light(&g, (PointLight) {
         .intensity =  0.0f,  
-        .shine     =  1.0f,  
+        .shine     =  2.0f,  
         .pos       =  ball.world_pos,
         .clr       =  (GLColor) { 1.0f, 1.0f, 1.0f },  
     });
-    /*******************************************************/
+    /**************************************************************************/
 
 
-#if (TWOBALLS)
     /********** ANOTHER LIGHT BALL **********/
+#if (TWOBALLS)
     Model ball2 = model_from_obj(&ball_obj);
     ball2.world_pos   = (Vec3f) {
         .x = -1.0f,
         .y =  1.5f,
         .z = -1.0f,
     };
-    ball2.scale = 0.05f;
+    ball2.scale = 1.0f;
 
     int light_id2 = add_light(&g, (PointLight) {
-        .intensity =  10000.0f,  
-        .shine     =  2.0f,  
+        .intensity =  0.0f,  
+        .shine     =  4.0f,  
         .pos       =  ball2.world_pos,
         .clr       =  (GLColor) { 1.0f, 1.0f, 1.0f },  
     });
-    /*******************************************************/
 #endif 
+    /*******************************************************/
 
+
+    Model* models[] = {
+        &cube, 
+        &ground, 
+        &ball,
+
+#if (TWOBALLS) 
+        &ball2,
+#endif
+
+    };
+
+    const int models_count = sizeof(models) / sizeof(*models);
 
     for (;;) {
         begin_frame(&g);
         float t = GLutil_get_time_secs(&g);
 
-            /**************** UPDATE ******************************************/
+/************************** UPDATE ********************************************/
             update_camera(&g);
             float delta_angle = 0.01;
             Vec3f axis = (Vec3f) { 0.0f, 1.0f, 0.0f };
+
+            for ( int i = 0; i < models_count; ++i) {
+                // update_model(); // maybe function pointer in the Model struct???? 
+            }
+
+            if ( g.input.space_bar.down ) {
+                shader_reload(&shadow_shader);
+                shader_reload(&render_shader);
+                for ( int i = 0; i < models_count; ++i) {
+                    models[i]->geometry->shader_program = render_shader;
+                }
+            }
+
+            cube.orientation = quat_mul(cube.orientation, quat_from_angle_axis(2 * delta_angle, axis));
+
+
 
             ball.world_pos = Vec3f_rotate( ball.world_pos, delta_angle, axis);
             PointLight* l = get_light(&g, light_id);
@@ -135,13 +168,15 @@ int main(void)
             PointLight* l2 = get_light(&g, light_id2);
             l2->pos = ball2.world_pos;
 #endif
-            /******************************************************************/
+/******************************************************************************/
 
 
+/************************** SHADOWMAP *****************************************/
             compute_shadow_maps(&g, shadow_shader, 2, (Model*[]){ &cube, &ground });
+/******************************************************************************/
             
 
-            /*************** CAMERA RENDER ************************************/
+/************************* RENDER *********************************************/
             clear_bg(BLACK);
             render_model(&g, &cube);
             render_model(&g, &ball);
@@ -150,7 +185,7 @@ int main(void)
 #if (TWOBALLS)
             render_model(&g, &ball2);
 #endif
-            /******************************************************************/
+/******************************************************************************/
 
         end_frame(&g);
     }

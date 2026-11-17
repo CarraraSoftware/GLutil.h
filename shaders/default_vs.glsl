@@ -134,9 +134,9 @@ vec3 vec3_rotate(vec3 v, float angle, vec3 axis)
 void main() {
     vec3 normal0 = vec3_rotate_by_quat( normal/scale, orientation );
 
-    vec3 scaled     = pos * scale;
-    vec3 rotated    = vec3_rotate_by_quat( scaled, orientation );
-    vec3 translated = world_pos + rotated;
+    vec3 rotated    = vec3_rotate_by_quat( pos, orientation );
+    vec3 scaled     = rotated * scale;
+    vec3 translated = world_pos + scaled;
 
     gl_Position = proj_mat * view_mat *  vec4(translated, 1.0f);
 

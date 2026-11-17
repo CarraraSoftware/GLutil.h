@@ -560,6 +560,7 @@ GLutil_Camera GLutil_camera_orbit(GLutil_Camera camera, float theta, float phi);
 // SHADERS
 GLutil_ShaderProgram GLutil_shader_new(const char* vert_shader, const char* frag_shader); // Cria um ShaderProgram através da compilação e linking do arquivos de shader nos parâmetros
 GLutil_ShaderProgram GLutil_default_shaders();                                            // Cria um ShaderProgram através da compilação e linking do arquivos de shader com nomes representados por GLUTIL_DEFAULT_VERT_SHADER_PATH e GLUTIL_DEFAULT_FRAG_SHADER_PATH.
+void GLutil_shader_reload(GLutil_ShaderProgram* shader);                                  // Delete o ShaderProgram associado a shader->id (se existe) e recompila e relinka os arquivos fontes.
 GLuint GLutil_shader_load_vert(const char* name); // Wrapper de shader_load
 GLuint GLutil_shader_load_frag(const char* name); // Wrapper de shader_load
 GLuint GLutil_shader_load(const char* name, GLutil_ShaderType type); // Lê o código fonte de um arquivo de vertex ou fragment shader, compila ele e retorna o id do shader compilado. Majoritariamente feito pra uso interno da lib, mas pode ser útil.
@@ -834,6 +835,7 @@ void GLutil_print_framebuffer_status(GLenum status);
 #define default_shaders                GLutil_default_shaders
 #define check_shader_compilation_error GLutil_check_shader_compilation_error
 #define shader_new                     GLutil_shader_new
+#define shader_reload                  GLutil_shader_reload
 #define shader_load                    GLutil_shader_load
 #define shader_use                     GLutil_shader_use
 #define shader_add_int                 GLutil_shader_add_int
@@ -1919,6 +1921,14 @@ GLutil_ShaderProgram GLutil_shader_new(const char* vert_shader, const char* frag
     glDeleteShader(vs_id); GLUTIL_CHECK_GL_ERROR();
     glDeleteShader(fs_id); GLUTIL_CHECK_GL_ERROR();
     return shader;
+}
+
+void GLutil_shader_reload(GLutil_ShaderProgram* shader)
+{
+    if ( shader->id > 0 ) {
+        glDeleteProgram( shader->id );
+    }
+    *shader = GLutil_shader_new(shader->vert_shader_filename, shader->frag_shader_filename);
 }
 
 GLuint GLutil_shader_load_vert(const char* name)
