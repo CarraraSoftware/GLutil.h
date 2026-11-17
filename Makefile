@@ -32,7 +32,7 @@ cubes:
 	$(OUT_DIR)cubes
 
 shadow:
-	gcc -o $(OUT_DIR)shadow examples/250-shadow/shadow.c $(LINKER_FLAGS)
+	gcc -ggdb -o $(OUT_DIR)shadow examples/250-shadow/shadow.c $(LINKER_FLAGS)
 	$(OUT_DIR)shadow
 
 

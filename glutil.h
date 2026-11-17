@@ -399,6 +399,12 @@ typedef struct {
     float          shine;
     GLutil_Vec3f   pos;
     GLutil_GLColor clr;
+
+    GLuint         shadow_map;    // id da texture
+    GLuint         shadow_buffer; // id do framebuffer
+
+    GLutil_Camera  pov;           // perspectiva do PointLight, mirando no target de glutil->camera.
+    GLutil_Mat4x4f space_matrix;  // projection * view da perspectiva da luz.
 } GLutil_PointLight;
 
  // Array Dinâmico para armazenar todas as fontes pontuais de luz 
@@ -583,15 +589,20 @@ void GLutil_render_model(GLutil* glutil, GLutil_Model* model);
 
 GLuint GLutil_load_texture(const char* texture_name);
 
-
+// LIGHTS & SHADOWS
 int GLutil_add_light(GLutil* glutil, GLutil_PointLight light);
 GLutil_PointLight* GLutil_get_light(GLutil* glutil, int light_id);
+void GLutil_generate_shadow_map_texture(GLutil_PointLight* l);
+void GLutil_activate_shadow_buffer(GLutil* g, GLutil_PointLight* l);
+void GLutil_deactivate_shadow_buffer(GLutil* g, GLutil_PointLight* l, GLutil_Camera old_cam);
+GLutil_Mat4x4f GLutil_light_space_matrix(GLutil_PointLight l);
 
+void GLutil_compute_shadow_maps(GLutil* g, GLutil_ShaderProgram shadow_shader, int models_count, GLutil_Model** models);
 
+// OTHER STUFF?
 void GLutil_wireframe_mode();
-GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
- 
 
+void GLutil_print_framebuffer_status(GLenum status);
 
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -855,8 +866,15 @@ GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
 #define camera_orbit      GLutil_camera_orbit
 
 
-#define add_light GLutil_add_light
-#define get_light GLutil_get_light
+#define add_light                   GLutil_add_light
+#define get_light                   GLutil_get_light
+#define generate_shadow_map_texture GLutil_generate_shadow_map_texture
+#define activate_shadow_buffer      GLutil_activate_shadow_buffer
+#define deactivate_shadow_buffer    GLutil_deactivate_shadow_buffer
+#define light_space_matrix          GLutil_light_space_matrix
+#define compute_shadow_maps         GLutil_compute_shadow_maps
+
+#define print_framebuffer_status    GLutil_print_framebuffer_status
 
 #endif // GLUTIL_INCLUDE_PREFIX
 
@@ -2183,13 +2201,137 @@ int GLutil_add_light(GLutil* glutil, GLutil_PointLight light)
 {
     // Retorna o índice da instância de light no vec de lights
     carr_vec_append(&glutil->lights, light);
-    return glutil->lights.len - 1;
+    int light_id = glutil->lights.len - 1;
+    GLutil_generate_shadow_map_texture(get_light(glutil, light_id));
+    return light_id;
 }
 
 GLutil_PointLight* GLutil_get_light(GLutil* glutil, int light_id) 
 {
     // Retorna o pointer pra instância de light no vec de lights
     return &glutil->lights.items[light_id];
+}
+
+
+void GLutil_generate_shadow_map_texture(GLutil_PointLight* l)
+{
+#define SHADOW_WIDTH  1024
+#define SHADOW_HEIGHT 1024
+    printf("Generating Shadow Map Texture.\n");
+    glGenTextures( 1, &l->shadow_map ); CHECK_GL_ERROR();
+    glBindTexture( GL_TEXTURE_2D, l->shadow_map ); CHECK_GL_ERROR();
+    glTexImage2D(
+        GL_TEXTURE_2D, 0,               
+        GL_DEPTH_COMPONENT,
+        SHADOW_WIDTH, SHADOW_HEIGHT,
+        0, GL_DEPTH_COMPONENT, GL_FLOAT, 
+        NULL 
+    ); CHECK_GL_ERROR();
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); CHECK_GL_ERROR();
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); CHECK_GL_ERROR();
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_BORDER); CHECK_GL_ERROR();
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER); CHECK_GL_ERROR();
+    float border_clr[] = { 1.0, 1.0, 1.0, 1.0 };
+    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_clr); CHECK_GL_ERROR();
+
+    printf("       ╰─ OK. ShadowMap TextureId = %d\n", l->shadow_map);
+    printf("Generating Shadow Framebuffer\n");
+
+    glGenFramebuffers(1, &l->shadow_buffer); CHECK_GL_ERROR();
+    glBindFramebuffer( GL_FRAMEBUFFER, l->shadow_buffer ); CHECK_GL_ERROR();
+    glFramebufferTexture2D(
+        GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, 
+        GL_TEXTURE_2D,  l->shadow_map, 0
+    ); CHECK_GL_ERROR();
+    glDrawBuffer( GL_NONE ); CHECK_GL_ERROR();
+    glReadBuffer( GL_NONE ); CHECK_GL_ERROR();
+    glBindFramebuffer( GL_FRAMEBUFFER, 0 ); CHECK_GL_ERROR();
+    printf("       ╰─ OK. Shadow FramebufferId = %d\n", l->shadow_buffer);
+}
+
+void GLutil_activate_shadow_buffer(GLutil* g, GLutil_PointLight* l)
+{
+    GLutil_Vec3f light_target = g->camera.target;
+    GLutil_Vec3f forward = GLutil_Vec3f_normalize(GLutil_Vec3f_sub( light_target, l->pos )); // 1 unit long
+    GLutil_Vec3f world_up = fabsf(forward.y) > 0.99 
+        ? (GLutil_Vec3f){0.0f,0.0f,1.0f} : (GLutil_Vec3f){0.0f,1.0f,0.0f};
+
+    GLutil_Vec3f right = GLutil_Vec3f_cross(forward, world_up);
+    GLutil_Vec3f up    = GLutil_Vec3f_cross(right, forward);
+    l->pov = (Camera) {
+        .pos    = l->pos,
+        .target = light_target,
+        .up     = up,
+        .fovX   = 60.0f,
+        .near   = 1.0f,
+        .far    = 200.0f
+    };
+
+    glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);      CHECK_GL_ERROR();
+    glBindFramebuffer( GL_FRAMEBUFFER, l->shadow_buffer); CHECK_GL_ERROR();
+    glClear( GL_DEPTH_BUFFER_BIT ); CHECK_GL_ERROR();
+    glEnable( GL_DEPTH_TEST );
+}
+
+void GLutil_deactivate_shadow_buffer(GLutil* g, GLutil_PointLight* l, GLutil_Camera old_cam)
+{
+    g->camera = old_cam;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    GLUTIL_CHECK_GL_ERROR();
+}
+
+
+GLutil_Mat4x4f GLutil_light_space_matrix(GLutil_PointLight l)
+{
+     Mat4x4f light_mat = Mat4x4f_mul(
+         Mat4x4f_transpose(view_matrix(l.pov)),
+         Mat4x4f_transpose(projection_matrix(l.pov, (float)SHADOW_WIDTH / (float)SHADOW_HEIGHT))
+     );
+     return light_mat;
+}
+
+
+void GLutil_compute_shadow_maps(GLutil* g, GLutil_ShaderProgram shadow_shader, int models_count, GLutil_Model** models)
+{
+
+    /**************  SHADOW MAP SETUP *********************************/
+    GLutil_Camera cam = g->camera;
+    int original_width = g->winwidth;
+    int original_height = g->winheight;
+
+    // necessário pra calcular o aspect_ratio que é passado pra projection_matrix, durante o render_model
+    g->winwidth  = SHADOW_WIDTH;
+    g->winheight = SHADOW_HEIGHT;
+    /**********************************************************************/
+
+
+    for ( int j = 0; j < g->lights.len; ++j) {
+        GLutil_PointLight* light = get_light(g, j);
+        activate_shadow_buffer(g, light); // ativa o framebuffer da light e calcula o pov dela
+        g->camera = light->pov;           // muda a camera global pra perspectiva da light
+
+        /**************** RENDER EACH MODEL IN LIGHT'S POV ********************/
+        for (  int i = 0; i < models_count; ++i ) {
+            GLutil_Model* model = models[i];
+            GLutil_ShaderProgram original_shader = model->geometry->shader_program;
+
+            model->geometry->shader_program = shadow_shader;
+            render_model(g, model);
+            model->geometry->shader_program = original_shader;
+        }
+        /**********************************************************************/
+
+        deactivate_shadow_buffer(g, light, cam);
+    }
+
+    /*************** RESTORE STATE TO BEFORE SHADOW MAP RENDERING *************/
+    glViewport(0, 0, original_width, original_height);      
+    CHECK_GL_ERROR();
+
+    g->camera    = cam;
+    g->winwidth  = original_width;
+    g->winheight = original_height;
+    /**************************************************************************/
 }
 
 
@@ -2600,79 +2742,11 @@ GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj)
     return m;
 }
 
-/*
-void GLutil_render_model(GLutil* glutil, GLutil_Model* model)
-{
-    GLutil_ShaderProgram shader = model->geometry->shader_program;
-    GLutil_shader_use(shader);
-    glBindVertexArray(model->geometry->vao_id); 
-    CHECK_GL_ERROR();
-    GLuint shader_id = shader.id;
+#define DIFFUSE_TEXTURE_ID      GL_TEXTURE0
+#define DIFFUSE_TEXTURE_INDEX   0
+// #define SHADOWMAP_TEXTURE_ID    GL_TEXTURE1
+// #define SHADOWMAP_TEXTURE_INDEX 1
 
-
-    GLutil_shader_add_float(shader, "t", GLutil_get_time_secs(glutil));
-
-    GLutil_shader_add_mat3f(shader, "model_mat", GLutil_model_matrix(glutil->camera));
-    GLutil_shader_add_mat4f_transposed(shader, "view_mat", GLutil_view_matrix(glutil->camera));
-    GLutil_shader_add_mat4f_transposed(shader, "proj_mat", GLutil_projection_matrix(glutil->camera, glutil->winwidth / (float)glutil->winheight));
-
-
-    GLuint scale_loc = glGetUniformLocation(shader_id, "scale"); CHECK_GL_ERROR();
-    glUniform1f(scale_loc, model->scale); CHECK_GL_ERROR();
-
-    const float wpos[3] = { model->world_pos.x, model->world_pos.y, model->world_pos.z };
-    GLuint wpos_loc = glGetUniformLocation(shader_id, "world_pos"); CHECK_GL_ERROR();
-    glUniform3fv(wpos_loc, 1, wpos); CHECK_GL_ERROR();
-
-    const float orient[4] =  { model->orientation.x, model->orientation.y, model->orientation.z, model->orientation.w };
-    GLuint orient_loc = glGetUniformLocation(shader_id, "orientation"); CHECK_GL_ERROR();
-    glUniform4fv(orient_loc, 1, orient); CHECK_GL_ERROR();
-
-    GLuint texture_loc = glGetUniformLocation(shader_id, "the_texture"); CHECK_GL_ERROR();
-    glUniform1i(texture_loc, 0); CHECK_GL_ERROR();
-
-    GLuint campos_loc = glGetUniformLocation(shader_id, "camera_pos"); CHECK_GL_ERROR();
-    glUniform3fv(campos_loc, 1, (float*)&glutil->camera.pos);
-
-    GLuint lightscount_loc = glGetUniformLocation(shader_id, "lights_count"); CHECK_GL_ERROR();
-    glUniform1i(lightscount_loc, glutil->lights.len);
-    for (size_t i = 0; i < glutil->lights.len; ++i) {
-        char posstr[50];
-        sprintf(posstr, "lights[%ld].pos", i);
-        GLuint lightpos_loc = glGetUniformLocation(shader_id, posstr); CHECK_GL_ERROR();
-        glUniform3fv(lightpos_loc, 1, (float*)&glutil->lights.items[i].pos); CHECK_GL_ERROR();
-
-        char clrstr[50];
-        sprintf(clrstr, "lights[%ld].clr", i);
-        GLuint lightclr_loc = glGetUniformLocation(shader_id, clrstr); CHECK_GL_ERROR();
-        glUniform3fv(lightclr_loc, 1, (float*)&glutil->lights.items[i].clr); CHECK_GL_ERROR();
-
-        char shinstr[50];
-        sprintf(shinstr, "lights[%ld].shine", i);
-        GLuint lightshin_loc = glGetUniformLocation(shader_id, shinstr); CHECK_GL_ERROR();
-        glUniform1f(lightshin_loc, glutil->lights.items[i].shine); CHECK_GL_ERROR();
-
-        char intenstr[50];
-        sprintf(intenstr, "lights[%ld].intensity", i);
-        GLuint lightinten_loc = glGetUniformLocation(shader_id, intenstr); CHECK_GL_ERROR();
-        glUniform1f(lightinten_loc, glutil->lights.items[i].intensity); CHECK_GL_ERROR();
-    }
-
-
-    GLuint has_texture_loc = glGetUniformLocation(shader_id, "has_texture"); CHECK_GL_ERROR();
-    if ( model->texture_id == (GLuint)-1 ) {
-        glUniform1i(has_texture_loc, false); CHECK_GL_ERROR();
-    } else {
-        glUniform1i(has_texture_loc, true); CHECK_GL_ERROR();
-        glBindTexture(GL_TEXTURE_2D, model->texture_id); CHECK_GL_ERROR();
-    }
-
-    glDrawElements(GL_TRIANGLES, model->geometry->faces.len, GL_UNSIGNED_INT, 0); CHECK_GL_ERROR();
-    // printf("[DRAW] Error: %s\n", glErrorNames[glGetError()]);
-}
-*/
-
-// /* [
 void GLutil_render_model(GLutil* glutil, GLutil_Model* model)
 {
     GLutil_ShaderProgram shader = model->geometry->shader_program;
@@ -2690,14 +2764,12 @@ void GLutil_render_model(GLutil* glutil, GLutil_Model* model)
     GLutil_shader_add_vec3f(shader, "world_pos", model->world_pos);
     GLutil_shader_add_quaternion(shader, "orientation", model->orientation);
 
-
-#define DIFFUSE_TEXTURE_ID    GL_TEXTURE0
-#define DIFFUSE_TEXTURE_INDEX 0
+    GLutil_shader_add_vec3f(shader, "camera_pos", glutil->camera.pos);
 
     GLutil_shader_add_int(shader, "the_texture", DIFFUSE_TEXTURE_INDEX);
-    GLutil_shader_add_vec3f(shader, "camera_pos", glutil->camera.pos);
-    GLutil_shader_add_int(shader, "lights_count", glutil->lights.len);
 
+
+    GLutil_shader_add_int(shader, "lights_count", glutil->lights.len);
     for (size_t i = 0; i < glutil->lights.len; ++i) {
         char posstr[50];
         sprintf(posstr, "lights[%ld].pos", i);
@@ -2714,6 +2786,23 @@ void GLutil_render_model(GLutil* glutil, GLutil_Model* model)
         char intenstr[50];
         sprintf(intenstr, "lights[%ld].intensity", i);
         GLutil_shader_add_float(shader, intenstr, glutil->lights.items[i].intensity);
+
+
+        GLuint shadowmap_texture_index = i + 1;
+
+        char shadow_map_str[50];
+        sprintf(shadow_map_str, "shadow_maps[%ld]", i);
+        GLutil_shader_add_int(shader, shadow_map_str, shadowmap_texture_index);
+
+        glActiveTexture( GL_TEXTURE0 + shadowmap_texture_index );
+        glBindTexture( GL_TEXTURE_2D, glutil->lights.items[i].shadow_map );
+
+
+        GLutil_Mat4x4f light_mat = GLutil_light_space_matrix(glutil->lights.items[i]);
+        char light_mat_str[50];
+        sprintf(light_mat_str, "lights[%ld].light_mat", i);
+        GLutil_shader_add_mat4f(shader, light_mat_str, light_mat);
+
     }
 
 
@@ -2730,6 +2819,46 @@ void GLutil_render_model(GLutil* glutil, GLutil_Model* model)
 
 }
 // ] */
+
+
+void GLutil_print_framebuffer_status(GLenum status) 
+{
+    switch (status) {
+    case GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE: {
+        printf("FRAMEBUFFER_STATUS = GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE\n");
+    }; break;
+    case GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME: {
+        printf("FRAMEBUFFER_STATUS = GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME\n");
+    }; break;
+    case GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL: {
+        printf("FRAMEBUFFER_STATUS = GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL\n");
+    }; break;
+    case GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE: {
+        printf("FRAMEBUFFER_STATUS = GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE\n");
+    }; break;
+    case GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LAYER: {
+        printf("FRAMEBUFFER_STATUS = GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LAYER\n");
+    }; break;
+    case GL_FRAMEBUFFER_COMPLETE: {
+        printf("FRAMEBUFFER_STATUS = GL_FRAMEBUFFER_COMPLETE\n");
+    }; break;
+    case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT: {
+        printf("FRAMEBUFFER_STATUS = GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT\n");
+    }; break;
+    case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT: {
+        printf("FRAMEBUFFER_STATUS = GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT\n");
+    }; break;
+    case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER: {
+        printf("FRAMEBUFFER_STATUS = GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER\n");
+    }; break;
+    case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER: {
+        printf("FRAMEBUFFER_STATUS = GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER\n");
+    }; break;
+    case GL_FRAMEBUFFER_UNSUPPORTED: {
+        printf("FRAMEBUFFER_STATUS = GL_FRAMEBUFFER_UNSUPPORTED\n");
+    }; break;
+    }
+}
 
 #endif // GLUTIL_H_
 

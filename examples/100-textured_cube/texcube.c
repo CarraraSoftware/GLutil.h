@@ -61,6 +61,8 @@ int main(void) {
     // init(&glutil, 2560, 1440);
     set_target_fps(&glutil, 60.0f);
 
+
+    GLutil_ShaderProgram shadow_shader = shader_new("./shaders/shadow_vert.glsl", "./shaders/shadow_frag.glsl");
     // wireframe_mode();
 
     //fancy cube with texture and normals 
@@ -73,7 +75,6 @@ int main(void) {
         .z =  0.0f,
     };
     cube.scale = UNIT;
-    printf("Cube Shaders: '%s' and '%s'\n", obj.shader_program.vert_shader_filename, obj.shader_program.frag_shader_filename);
 
     // flashlight style light point, attached to camera
     GLColor light_clr = (GLColor) { 1.0f, 1.0f, 1.0f };
@@ -88,22 +89,21 @@ int main(void) {
     // bare bones ball with only vertex data for representing the light source's position
     ObjData ball_obj = load_obj_file(BALL_FILE_PATH);
     Model ball = model_from_obj(&ball_obj);
-    printf("Ball Obj Shaders: '%s' and '%s'\n", ball_obj.shader_program.vert_shader_filename, ball_obj.shader_program.frag_shader_filename);
 
     ball.world_pos = (Vec3f) {
-        .x = 1.5f * UNIT, 
-        .y = 1.5f * UNIT,
-        .z = 1.5f * UNIT,  
+        .x = 1.5f, 
+        .y = 1.5f,
+        .z = 1.5f,  
     };
-    ball.scale = UNIT / 10.0f;
+    ball.scale = 0.1f;
 
     GLColor ball_clr = (GLColor) { 0.8f, 0.8f, 0.8f };
 
+    // @TODO: make function to upload data from vertex array to GPU buffer
     for ( int i = 0; i < ball.geometry->vertices.len; ++i ) {
         Vertex* v = &ball.geometry->vertices.items[i];
         v->color = ball_clr;
     }
-
 
     int ball_light = add_light(&glutil, (GLutil_PointLight) {
         .pos = ball.world_pos,
@@ -118,15 +118,15 @@ int main(void) {
     floor_tile.texture_id = load_texture(FLOOR_TEXTURE);
 
 
-    glutil.camera.pos.z = UNIT/100.0f;
-    glutil.camera.pos.y = UNIT/100.0f;
-    glutil.camera.pos.x = UNIT/100.0f;
+    glutil.camera.pos.z = 5.0f;
+    glutil.camera.pos.y = 5.0f;
+    glutil.camera.pos.x = 5.0f;
 
     for (;;) {
         uint64_t dt = begin_frame(&glutil);
 
         // hot reload shaders quando pressionar barra de espaço
-        // if ( glutil.input.space_bar.down ) default_shaders(cube.geometry);
+        if ( glutil.input.space_bar.down ) cube.geometry->shader_program = default_shaders();
 
         update_camera(&glutil);
 
@@ -135,7 +135,6 @@ int main(void) {
             get_light(&glutil, flashlight)->shine     = 8.0f;
             get_light(&glutil, flashlight)->intensity = 100.0f;
         }
-
 
         Quaternion rotation = quat_from_angle_axis( 0.01, (Vec3f){ 0.0f, 1.0f, 0.0f } );
         cube.orientation = quat_mul(cube.orientation, rotation);
@@ -146,12 +145,16 @@ int main(void) {
         get_light(&glutil, ball_light)->pos = ball.world_pos;
 
 
+        compute_shadow_maps(&glutil, shadow_shader, 2, (Model*[]){ &floor_tile, &cube });
+
+
+
         clear_bg(BLACK);
 
-        const float floor_start = -10 * UNIT;
-        const float floor_end   =  10 * UNIT;
+        const float floor_start = -10.0f;
+        const float floor_end   =  10.0f;
         floor_tile.scale = UNIT;
-        floor_tile.world_pos = (Vec3f) { 0.0f, -2.0f*UNIT, 0.0f  };
+        floor_tile.world_pos = (Vec3f) { 0.0f, -2.0f, 0.0f  };
 
         for ( float floor_z = floor_start; floor_z < floor_end; floor_z += UNIT)
             for ( float floor_x = floor_start; floor_x < floor_end; floor_x += UNIT) {
@@ -159,7 +162,6 @@ int main(void) {
                 floor_tile.world_pos.z = floor_z;
                 render_model(&glutil, &floor_tile);
             }
-        // render_model(&glutil, &floor_tile);
         render_model(&glutil, &cube);
         render_model(&glutil, &ball);
 

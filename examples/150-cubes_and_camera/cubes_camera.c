@@ -97,8 +97,8 @@ int main(void) {
     srand(get_time_nanos());
 
     glutil.camera.pos.x = 00.0f;
-    glutil.camera.pos.y = 50.0f;
-    glutil.camera.pos.z = 50.0f;
+    glutil.camera.pos.y = 200.0f;
+    glutil.camera.pos.z = 200.0f;
     glutil.camera.fovX = 90.0f;
 
     

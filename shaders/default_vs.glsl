@@ -1,6 +1,10 @@
-#version 330 core
+#version 400 core
 
+#ifndef quaternions
 #define quaternion vec4
+#endif
+
+#define MAX_LIGHTS 5
 
 layout (location = 0) in vec3 pos;
 layout (location = 1) in vec3 color;
@@ -12,7 +16,7 @@ out vec3 vs_color;
 out vec2 vs_texture_pos;
 out vec3 vs_normal;
 out vec3 vs_camera_pos;
-out vec4 vs_lightspace_pos;
+out vec4 vs_lightspace_pos[MAX_LIGHTS];
 
 uniform float t;
 uniform float scale;
@@ -22,12 +26,28 @@ uniform quaternion orientation;
 uniform mat3 model_mat;
 uniform mat4 view_mat;
 uniform mat4 proj_mat;
-uniform mat4 light_mat;
 
 uniform vec3 camera_pos;
 
 const float PI = 3.14159265359;
 
+struct Light {
+    vec3  pos;
+    float shine;
+    vec3  clr;
+    float intensity;
+
+    mat4  light_mat;  // proj * view from light's pov
+};
+
+uniform int lights_count;
+uniform Light lights[MAX_LIGHTS];
+
+
+
+#ifndef quaternions
+#define quaternion vec4
+#endif
 
 quaternion quat_from_angle_axis(float angle, vec3 axis)
 {
@@ -110,21 +130,28 @@ vec3 vec3_rotate(vec3 v, float angle, vec3 axis)
     return vec3_rotate_by_quat(v, q);
 }
 
+
 void main() {
-    vec3 pos0    = vec3_rotate_by_quat( pos, orientation    );
-    vec3 normal0 = vec3_rotate_by_quat( normal, orientation );
+    vec3 normal0 = vec3_rotate_by_quat( normal/scale, orientation );
 
-    vec3 pos1 =  world_pos + (pos * scale);
-    vs_pos = pos1;
+    vec3 scaled     = pos * scale;
+    vec3 rotated    = vec3_rotate_by_quat( scaled, orientation );
+    vec3 translated = world_pos + rotated;
 
-    vec4 pos2 = vec4(model_mat * pos1, 1.0f);
+    gl_Position = proj_mat * view_mat *  vec4(translated, 1.0f);
 
-    gl_Position = proj_mat * view_mat *  pos2;
-    vec4 light_pos = light_mat * pos2;
-
+    vs_pos             = translated; // world position do POV da camera
     vs_color           = color;
     vs_texture_pos     = tex_pos;
-    vs_normal          = normal;
+    vs_normal          = normal0;
     vs_camera_pos      = camera_pos;
-    vs_lightspace_pos  = light_pos;
+
+    for (int i = 0; i < MAX_LIGHTS; i++) {
+        if ( i >= lights_count ) {
+            break;
+        }
+        vec4 light_pos = lights[i].light_mat * vec4(translated, 1.0f);
+        vs_lightspace_pos[i] = light_pos; // world position do POV de lights[i]
+    }
 };
+  
