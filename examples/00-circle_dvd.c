@@ -19,6 +19,7 @@ int main(void) {
 
 
     XEvent event;
+    immediate_mode_begin(&glutil);
     for (;;) {
         // XNextEvent(glutil.display, &event); @TODO: trabalhar com eventos e tals
 
@@ -46,12 +47,11 @@ int main(void) {
             vy *= -1;
         }
 
-        clear_bg(BLACK);
-        circle( center, radius, (Color) { 255, 255, 255, 255 } );
-
-        
+            clear_bg(BLACK);
+            circle( center, radius, (Color) { 255, 255, 255, 255 } );
         glXSwapBuffers(glutil.display, glutil.window);
     }
+    immediate_mode_end(&glutil);
     
     glXDestroyContext(glutil.display, glutil.ctx);
     XCloseDisplay(glutil.display);

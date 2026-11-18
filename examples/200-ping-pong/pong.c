@@ -277,6 +277,7 @@ int main(void)
 
 	Controls controls = {0};
 	bool     running  = true;
+    immediate_mode_begin(&glutil);
 	while (running) {
 		while (XPending(glutil.display)) {
 			XEvent event;
@@ -307,6 +308,7 @@ int main(void)
 		}
 		end_frame(&glutil);
 	}
+    immediate_mode_end(&glutil);
 
 	destroy(&glutil);
 	return 0;

@@ -68,7 +68,7 @@ int main(void) {
     //fancy cube with texture and normals 
     ObjData obj = load_obj_file(CUBE_WITH_NORMALS_FILE_PATH); // loads model with default shaders and no texture
     Model cube = model_from_obj(&obj);
-    if ( WOODBOX_TEXTURE_FILE_PATH ) cube.texture_id = load_texture(WOODBOX_TEXTURE_FILE_PATH);
+    if ( WOODBOX_TEXTURE_FILE_PATH ) cube.texture_id = texture_from_image(WOODBOX_TEXTURE_FILE_PATH);
     cube.world_pos = (Vec3f) { 
         .x =  0.0f,
         .y =  0.0f,
@@ -115,7 +115,7 @@ int main(void) {
 
     ObjData floor_mesh     = load_obj_file(FLOOR_MODEL);
     Model   floor_tile     = model_from_obj(&floor_mesh);
-    floor_tile.texture_id = load_texture(FLOOR_TEXTURE);
+    floor_tile.texture_id = texture_from_image(FLOOR_TEXTURE);
 
 
     glutil.camera.pos.z = 5.0f;
@@ -126,7 +126,7 @@ int main(void) {
         uint64_t dt = begin_frame(&glutil);
 
         // hot reload shaders quando pressionar barra de espaço
-        if ( glutil.input.space_bar.down ) cube.geometry->shader_program = default_shaders();
+        if ( glutil.input.space_bar.down ) shader_use(&glutil, render_shaders());
 
         update_camera(&glutil);
 
@@ -145,7 +145,7 @@ int main(void) {
         get_light(&glutil, ball_light)->pos = ball.world_pos;
 
 
-        compute_shadow_maps(&glutil, shadow_shader, 2, (Model*[]){ &floor_tile, &cube });
+        compute_shadow_maps(&glutil, 2, (Model*[]){ &floor_tile, &cube });
 
 
         clear_bg(BLACK);

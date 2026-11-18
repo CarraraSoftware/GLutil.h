@@ -311,13 +311,7 @@ typedef struct {
 
     GLuint vbo_id, ebo_id, vao_id;  // ids (or names?) returned by openGL when vertex data is loaded into the GPU
 
-
-    // @NOTE: 
-    // talvez esse campo deva ser interpretado como o shader padrão associado
-    // a essa model, mas através de um Vec<Shader> em algum lugar podemos
-    // permitir adicionar mais shaders dinamicamente
-    GLutil_ShaderProgram shader_program;          // id of compiled and linked shader program to use
-                                    // a value of -1 (4294967295), means there's no shader associated with this model 
+                                    
 } GLutil_ObjData;
 
 typedef struct {
@@ -449,6 +443,8 @@ typedef struct GLutil {
     GLutil_Input  input;
 
     GLutil_PointLights lights;
+
+    GLutil_ShaderProgram active_shader;          
 } GLutil;
 
 
@@ -520,8 +516,6 @@ GLutil_Vec3f GLutil_Vec3f_rotate_z(GLutil_Vec3f v, float angle);
 GLutil_Vec3f GLutil_Vec3f_rotate_around_axis(GLutil_Vec3f v, GLutil_Vec3f R, float angle); // rotação usando multiplicação de matrizes
 GLutil_Vec3f GLutil_Vec3f_rotate(GLutil_Vec3f v, float angle, GLutil_Vec3f axis);          // rotação usando quaternions
 
-
-
 GLutil_Vec4f GLutil_Vec4f_apply_mat4x4(GLutil_Vec4f v, GLutil_Mat4x4f A);
 float GLutil_Vec4f_dot(GLutil_Vec4f a, GLutil_Vec4f b);
 
@@ -559,15 +553,18 @@ GLutil_Camera GLutil_camera_orbit(GLutil_Camera camera, float theta, float phi);
 
 // SHADERS
 GLutil_ShaderProgram GLutil_shader_new(const char* vert_shader, const char* frag_shader); // Cria um ShaderProgram através da compilação e linking do arquivos de shader nos parâmetros
-GLutil_ShaderProgram GLutil_default_shaders();                                            // Cria um ShaderProgram através da compilação e linking do arquivos de shader com nomes representados por GLUTIL_DEFAULT_VERT_SHADER_PATH e GLUTIL_DEFAULT_FRAG_SHADER_PATH.
-void GLutil_shader_reload(GLutil_ShaderProgram* shader);                                  // Delete o ShaderProgram associado a shader->id (se existe) e recompila e relinka os arquivos fontes.
+
+GLutil_ShaderProgram GLutil_render_shaders();         // Ativa o shader padrão pra rasterizar cenas
+GLutil_ShaderProgram GLutil_shadow_shaders();         // Ativa o shader para gerar o shadow_map
+GLutil_ShaderProgram GLutil_compatibility_shaders();  // Ativa o shader de compatibilidade para permitir o uso das funções de modo imediato
+
+void GLutil_shader_reload(GLutil_ShaderProgram* shader);  // Delete o ShaderProgram associado a shader->id (se existe) e recompila e relinka os arquivos fontes.
 GLuint GLutil_shader_load_vert(const char* name); // Wrapper de shader_load
 GLuint GLutil_shader_load_frag(const char* name); // Wrapper de shader_load
 GLuint GLutil_shader_load(const char* name, GLutil_ShaderType type); // Lê o código fonte de um arquivo de vertex ou fragment shader, compila ele e retorna o id do shader compilado. Majoritariamente feito pra uso interno da lib, mas pode ser útil.
 void GLutil_check_shader_compilation_error_(GLuint shader_id, const char* shader_file, GLutil_ShaderType type, int line, const char* file, const char* func); // não usar diretamente. função feita pra ser usada através do macro GLutil_check_shader_compilation_error
 
-void GLutil_shader_use(GLutil_ShaderProgram shader); // marca o id do shader como ativo no opengl, essencialmente um wrapper de glUseProgram(shader.id);
-
+void GLutil_shader_use(GLutil* glutil, GLutil_ShaderProgram shader); // marca o id do shader como ativo no opengl e salva a ShaderProgram em glutil->active_shader
 
 // funções auxialiares pra passar uniforms para os shaders
 void GLutil_shader_add_int(GLutil_ShaderProgram shader, const char* name, int value);
@@ -580,7 +577,12 @@ void GLutil_shader_add_mat3f(GLutil_ShaderProgram shader, const char* name, GLut
 void GLutil_shader_add_mat4f(GLutil_ShaderProgram shader, const char* name, GLutil_Mat4x4f value);
 void GLutil_shader_add_mat4f_transposed(GLutil_ShaderProgram shader, const char* name, GLutil_Mat4x4f value);
 
-// MODELS, OBJ E TEXTURES
+// funçõezinhas de compatibilidade com modo imediato
+void GLutil_immediate_mode_begin(GLutil* glutil);
+void GLutil_immediate_mode_end(GLutil* glutil);
+
+
+// MODELS, OBJ 
 GLutil_ObjData GLutil_load_obj_file(const char* file_path);
 void GLutil_load_obj_to_GPU(GLutil_ObjData* obj);
 
@@ -588,7 +590,11 @@ GLutil_Model GLutil_make_model();
 GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj);
 void GLutil_render_model(GLutil* glutil, GLutil_Model* model);
 
-GLuint GLutil_load_texture(const char* texture_name);
+// TEXTURES 
+GLuint GLutil_generate_texture_2D();
+GLuint GLutil_texture_from_pixels(int img_width, int img_height, unsigned char* pixels);
+GLuint GLutil_texture_from_image(const char* image_file_name);
+
 
 // LIGHTS & SHADOWS
 int GLutil_add_light(GLutil* glutil, GLutil_PointLight light);
@@ -598,7 +604,7 @@ void GLutil_activate_shadow_buffer(GLutil* g, GLutil_PointLight* l);
 void GLutil_deactivate_shadow_buffer(GLutil* g, GLutil_PointLight* l, GLutil_Camera old_cam);
 GLutil_Mat4x4f GLutil_light_space_matrix(GLutil_PointLight l);
 
-void GLutil_compute_shadow_maps(GLutil* g, GLutil_ShaderProgram shadow_shader, int models_count, GLutil_Model** models);
+void GLutil_compute_shadow_maps(GLutil* g, int models_count, GLutil_Model** models);
 
 // OTHER STUFF?
 void GLutil_wireframe_mode();
@@ -832,7 +838,9 @@ void GLutil_print_framebuffer_status(GLenum status);
 #define next_event        GLutil_next_event
 #define t_secs            GLutil_t_secs
 
-#define default_shaders                GLutil_default_shaders
+#define render_shaders                 GLutil_render_shaders
+#define shadow_shaders                 GLutil_shadow_shaders
+#define compatibility_shaders          GLutil_compatibility_shaders
 #define check_shader_compilation_error GLutil_check_shader_compilation_error
 #define shader_new                     GLutil_shader_new
 #define shader_reload                  GLutil_shader_reload
@@ -847,16 +855,19 @@ void GLutil_print_framebuffer_status(GLenum status);
 #define shader_add_mat3f               GLutil_shader_add_mat3f
 #define shader_add_mat4f               GLutil_shader_add_mat4f
 #define shader_add_mat4f_transposed    GLutil_shader_add_mat4f_transposed
-
+#define immediate_mode_begin           GLutil_immediate_mode_begin
+#define immediate_mode_end             GLutil_immediate_mode_end
 
 #define render_obj       GLutil_render_obj
 #define load_obj_file    GLutil_load_obj_file
 #define load_obj_to_GPU  GLutil_load_obj_to_GPU
-#define load_texture     GLutil_load_texture
 #define model_from_obj   GLutil_model_from_obj
 #define make_model       GLutil_make_model
 #define render_model     GLutil_render_model
 
+#define generate_texture_2D GLutil_generate_texture_2D
+#define texture_from_pixels GLutil_texture_from_pixels
+#define texture_from_image  GLutil_texture_from_image
 
 #define model_matrix      GLutil_model_matrix
 #define view_matrix       GLutil_view_matrix
@@ -909,8 +920,14 @@ GLutil_Camera GLUTIL_DEFAULT_CAMERA = {
 
 #define GLUTIL_DIV_EPS 0.000001
 
-static const char* GLUTIL_DEFAULT_VERT_SHADER_PATH = "./shaders/default_vs.glsl";
-static const char* GLUTIL_DEFAULT_FRAG_SHADER_PATH = "./shaders/default_fs.glsl";
+static const char* GLUTIL_RENDER_VERT_SHADER_PATH        = "./shaders/render_vert.glsl";
+static const char* GLUTIL_RENDER_FRAG_SHADER_PATH        = "./shaders/render_frag.glsl";
+
+static const char* GLUTIL_SHADOW_VERT_SHADER_PATH        = "./shaders/shadow_vert.glsl";
+static const char* GLUTIL_SHADOW_FRAG_SHADER_PATH        = "./shaders/shadow_frag.glsl";
+
+static const char* GLUTIL_COMPATIBILITY_VERT_SHADER_PATH = "./shaders/compatibility_vert.glsl";
+static const char* GLUTIL_COMPATIBILITY_FRAG_SHADER_PATH = "./shaders/compatibility_frag.glsl";
 
 
 const char* INPUT_TYPE_NAMES[] = {
@@ -1192,6 +1209,8 @@ void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h)
     glutil->prev_t_nanos = 0;
     glutil->dt_nanos     = 0;
     glutil->target_sleep_us = 16000; // 16 ms => 60 FPS
+
+    GLutil_shader_use(glutil, render_shaders());
 
 }
 
@@ -1903,6 +1922,44 @@ void GLutil_rect(GLutil_Vec2f topleft, float w, float h, GLutil_Color clr)
 /*******************************************************************************
 *                             SHADERS                                          *
 ********************************************************************************/
+
+// O ShaderProgram padrão usado pra rasterizar a cena final que aparece no monitor
+GLutil_ShaderProgram GLutil_render_shaders(void)
+{
+    static GLutil_ShaderProgram render_shader = { .id = -1 };
+    if ( render_shader.id == -1 ) {
+        render_shader = GLutil_shader_new(GLUTIL_RENDER_VERT_SHADER_PATH, GLUTIL_RENDER_FRAG_SHADER_PATH);
+        printf("Generated Render Shader with id = %u\n", render_shader.id);
+    } 
+    return render_shader;
+}
+
+// ShaderProgram utilizado pra renderizar a cena em uma textura feita para servir como shadow_map
+GLutil_ShaderProgram GLutil_shadow_shaders(void)
+{
+    static GLutil_ShaderProgram shadow_shader = { .id = -1 };
+    if ( shadow_shader.id == -1 ) {
+        shadow_shader = GLutil_shader_new(GLUTIL_SHADOW_VERT_SHADER_PATH, GLUTIL_SHADOW_FRAG_SHADER_PATH);
+        printf("Generated Render Shader with id = %u\n", shadow_shader.id);
+    }
+    return shadow_shader;
+}
+
+
+// ShaderProgram pra rasterizar a cena a partir das funções legadas de modo imediato do OpenGL 2.1
+GLutil_ShaderProgram  GLutil_compatibility_shaders() 
+{
+    static GLutil_ShaderProgram compat_shader = { .id = 0 };
+    if ( compat_shader.id == 0 ) {
+        compat_shader = GLutil_shader_new(GLUTIL_COMPATIBILITY_VERT_SHADER_PATH, GLUTIL_COMPATIBILITY_FRAG_SHADER_PATH);
+        printf("Generated Compatibility Shader with id = %u\n", compat_shader.id);
+    }
+    return compat_shader;
+}
+
+
+
+
 GLutil_ShaderProgram GLutil_shader_new(const char* vert_shader, const char* frag_shader)
 {
     GLutil_ShaderProgram shader = {};
@@ -1999,20 +2056,10 @@ void GLutil_check_shader_compilation_error_(GLuint shader_id, const char* shader
 }
 
 
-GLutil_ShaderProgram GLutil_default_shaders(void)
-{
-    static GLutil_ShaderProgram default_shader = { .id = -1 };
-    if ( default_shader.id == -1 ) {
-        default_shader = GLutil_shader_new(GLUTIL_DEFAULT_VERT_SHADER_PATH, GLUTIL_DEFAULT_FRAG_SHADER_PATH);
-        printf("Generated Default Shader with id = %u\n", default_shader.id);
-    } else {
-        printf("Reusing Default Shader with id = %u\n", default_shader.id);
-    }
-    return default_shader;
-}
 
-void GLutil_shader_use(GLutil_ShaderProgram shader)
+void GLutil_shader_use(GLutil* glutil, GLutil_ShaderProgram shader)
 {
+    glutil->active_shader = shader;
     glUseProgram(shader.id);
     GLUTIL_CHECK_GL_ERROR();
 }
@@ -2082,6 +2129,19 @@ void GLutil_shader_add_mat4f_transposed(GLutil_ShaderProgram shader, const char*
     GLUTIL_CHECK_GL_ERROR();
 }
 
+
+// Funçõezinhas de compatibilidade com modo imediato
+static GLutil_ShaderProgram __shader_backup;
+void GLutil_immediate_mode_begin(GLutil* glutil)
+{
+    __shader_backup = glutil->active_shader;
+    GLutil_shader_use(glutil, GLutil_compatibility_shaders());
+}
+
+void GLutil_immediate_mode_end(GLutil* glutil)
+{
+    GLutil_shader_use(glutil, __shader_backup);
+}
 
 /*******************************************************************************
  *                               CAMERA                                        *
@@ -2301,7 +2361,7 @@ GLutil_Mat4x4f GLutil_light_space_matrix(GLutil_PointLight l)
 }
 
 
-void GLutil_compute_shadow_maps(GLutil* g, GLutil_ShaderProgram shadow_shader, int models_count, GLutil_Model** models)
+void GLutil_compute_shadow_maps(GLutil* g, int models_count, GLutil_Model** models)
 {
 
     /**************  SHADOW MAP SETUP *********************************/
@@ -2312,6 +2372,10 @@ void GLutil_compute_shadow_maps(GLutil* g, GLutil_ShaderProgram shadow_shader, i
     // necessário pra calcular o aspect_ratio que é passado pra projection_matrix, durante o render_model
     g->winwidth  = SHADOW_WIDTH;
     g->winheight = SHADOW_HEIGHT;
+
+
+    GLutil_ShaderProgram original_shader = g->active_shader;
+    shader_use(g, GLutil_shadow_shaders());
     /**********************************************************************/
 
 
@@ -2323,11 +2387,7 @@ void GLutil_compute_shadow_maps(GLutil* g, GLutil_ShaderProgram shadow_shader, i
         /**************** RENDER EACH MODEL IN LIGHT'S POV ********************/
         for (  int i = 0; i < models_count; ++i ) {
             GLutil_Model* model = models[i];
-            GLutil_ShaderProgram original_shader = model->geometry->shader_program;
-
-            model->geometry->shader_program = shadow_shader;
             render_model(g, model);
-            model->geometry->shader_program = original_shader;
         }
         /**********************************************************************/
 
@@ -2338,6 +2398,7 @@ void GLutil_compute_shadow_maps(GLutil* g, GLutil_ShaderProgram shadow_shader, i
     glViewport(0, 0, original_width, original_height);      
     CHECK_GL_ERROR();
 
+    shader_use(g, original_shader);
     g->camera    = cam;
     g->winwidth  = original_width;
     g->winheight = original_height;
@@ -2641,7 +2702,6 @@ ObjData GLutil_load_obj_file(const char* file_path)
 
     printf("       ╰─ OK.\n");
     printf("Attaching Default Shaders to Obj Data.\n");
-    obj.shader_program = default_shaders();
     GLutil_load_obj_to_GPU(&obj);
     
     return obj;
@@ -2698,35 +2758,52 @@ void GLutil_load_obj_to_GPU(GLutil_ObjData* obj)
 }
 
 
+/*******************************************************************************
+ *                                TEXTURES                                     *
+ *******************************************************************************/
 
-GLuint GLutil_load_texture(const char* texture_name)
+GLuint GLutil_texture_cubemap()
 {
-    printf("Loading Texture '%s'\n", texture_name);
+    printf("TODO: texture cubemap\n");
+    return 0;
+}
+
+GLuint GLutil_generate_texture_2D() {
     GLuint texture_id;
-    int img_width, img_height, n;
-    unsigned char *data = stbi_load(texture_name, &img_width, &img_height, &n, 0);
-
-    if (data == NULL)  {
-        PRINT_ERROR("stbi_load failed\n");
-        exit(1);
-    }
-
-
     glGenTextures(1, &texture_id); GLUTIL_CHECK_GL_ERROR();
     glBindTexture(GL_TEXTURE_2D, texture_id); GLUTIL_CHECK_GL_ERROR();
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT); GLUTIL_CHECK_GL_ERROR();  
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT); GLUTIL_CHECK_GL_ERROR();
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR); GLUTIL_CHECK_GL_ERROR();
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); GLUTIL_CHECK_GL_ERROR();
+    return texture_id;
+}
 
+GLuint GLutil_texture_from_pixels(int img_width, int img_height, unsigned char* pixels)
+{
+    GLuint texture_id = GLutil_generate_texture_2D();
     glTexImage2D(
         GL_TEXTURE_2D, 0, GL_RGB,
         img_width, img_height,
-        0, GL_RGB, GL_UNSIGNED_BYTE,
-        data 
+        0, GL_RGB, GL_UNSIGNED_BYTE, // @TODO: PixelFormat (RGB) deveria ser um parâmetro
+        pixels
     ); GLUTIL_CHECK_GL_ERROR();
     glGenerateMipmap(GL_TEXTURE_2D); GLUTIL_CHECK_GL_ERROR();
+    return texture_id;
+}
 
+GLuint GLutil_texture_from_image(const char* image_file_name)
+{
+    printf("Loading Texture '%s'\n", image_file_name);
+    int img_width, img_height, n;
+    unsigned char *data = stbi_load(image_file_name, &img_width, &img_height, &n, 0);
+
+    if (data == NULL)  {
+        PRINT_ERROR("stbi_load failed\n");
+        exit(1);
+    }
+
+    GLuint texture_id = GLutil_texture_from_pixels(img_width, img_height, data);
     stbi_image_free(data);
 
     printf("       ╰─ OK.\n");
@@ -2759,8 +2836,13 @@ GLutil_Model GLutil_model_from_obj(GLutil_ObjData* obj)
 
 void GLutil_render_model(GLutil* glutil, GLutil_Model* model)
 {
-    GLutil_ShaderProgram shader = model->geometry->shader_program;
-    GLutil_shader_use(shader);
+    GLutil_ShaderProgram shader = glutil->active_shader;
+
+ // @NOTE: a ativação do shader deveria estar aqui? 
+ //        ou render_model deveria sempre assumir que GLutil_shader_use(...) foi chamado antes?
+    GLutil_shader_use(glutil, shader); 
+
+
     glBindVertexArray(model->geometry->vao_id); 
     CHECK_GL_ERROR();
 

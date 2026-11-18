@@ -56,15 +56,10 @@ int main(void)
     g.camera.pos.z = 5.0f;
     g.camera.pos.y = 3.0f;
 
-    GLutil_ShaderProgram shadow_shader = shader_new("./shaders/shadow_vert.glsl", "./shaders/shadow_frag.glsl");
-    GLutil_ShaderProgram render_shader = shader_new("./shaders/default_vs.glsl", "./shaders/default_fs.glsl");
-
-
     /********************** FLOOR  ********************************************/
     ObjData ground_obj = load_obj_file( ASSETS_PATH "/floortile.obj"); 
-        ground_obj.shader_program = render_shader;
     Model ground     = model_from_obj(&ground_obj);
-        ground.texture_id  = load_texture( ASSETS_PATH "/floortile.png");
+        ground.texture_id  = texture_from_image( ASSETS_PATH "/floortile.png");
         ground.scale       = +5.0f;
         ground.world_pos.y = -1.5f;
     /**************************************************************************/
@@ -72,9 +67,8 @@ int main(void)
 
     /********************** CUBE **********************************************/
     ObjData cube_obj = load_obj_file( ASSETS_PATH "/pinkube.obj");
-        cube_obj.shader_program = render_shader;
     Model cube = model_from_obj(&cube_obj);
-        cube.texture_id  = load_texture(ASSETS_PATH"/pinkube.jpg");
+        cube.texture_id  = texture_from_image(ASSETS_PATH"/pinkube.jpg");
         cube.world_pos.z = +0.0f;
         cube.world_pos.y = +0.5f;
         cube.scale       = +1.0f;
@@ -83,7 +77,6 @@ int main(void)
 
     /******************* LIGHT BALL *******************************************/
     ObjData ball_obj = load_obj_file(ASSETS_PATH"/ball.obj");
-        ball_obj.shader_program = render_shader;
     Model   ball     = model_from_obj(&ball_obj);
     ball.world_pos   = (Vec3f) {
         .x =  5.0f,
@@ -148,16 +141,11 @@ int main(void)
             }
 
             if ( g.input.space_bar.down ) {
-                shader_reload(&shadow_shader);
-                shader_reload(&render_shader);
-                for ( int i = 0; i < models_count; ++i) {
-                    models[i]->geometry->shader_program = render_shader;
-                }
+                ShaderProgram sh = shadow_shaders(); shader_reload(&sh);
+                ShaderProgram rd = render_shaders(); shader_reload(&rd);
             }
 
             cube.orientation = quat_mul(cube.orientation, quat_from_angle_axis(2 * delta_angle, axis));
-
-
 
             ball.world_pos = Vec3f_rotate( ball.world_pos, delta_angle, axis);
             PointLight* l = get_light(&g, light_id);
@@ -172,7 +160,7 @@ int main(void)
 
 
 /************************** SHADOWMAP *****************************************/
-            compute_shadow_maps(&g, shadow_shader, 2, (Model*[]){ &cube, &ground });
+            compute_shadow_maps(&g, 2, (Model*[]){ &cube, &ground });
 /******************************************************************************/
             
 

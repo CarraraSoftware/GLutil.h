@@ -425,6 +425,7 @@ int main(void)
     particles_init();
 
     set_target_fps(&glutil, 60.0f);
+    immediate_mode_begin(&glutil);
     for (;;) {
         uint64_t dt = begin_frame(&glutil);
             clear_bg(BLACK);
@@ -436,6 +437,7 @@ int main(void)
 
         end_frame(&glutil);
     }
+    immediate_mode_end(&glutil);
 
     destroy(&glutil);
     return 0;

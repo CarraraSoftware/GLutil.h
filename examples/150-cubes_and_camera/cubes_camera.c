@@ -31,8 +31,8 @@ Model CUBES[CUBES_COUNT] = {0};
 
 void init_cubes(ObjData* obj)
 {
-    GLuint texture_1 = load_texture(TEXTURE_1);
-    GLuint texture_2 = load_texture(TEXTURE_2);
+    GLuint texture_1 = texture_from_image(TEXTURE_1);
+    GLuint texture_2 = texture_from_image(TEXTURE_2);
     for (int i = 0; i < CUBES_COUNT; ++i) {
         float r = RAND(0.0f, 1.0f);
 

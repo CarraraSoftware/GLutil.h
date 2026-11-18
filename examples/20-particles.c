@@ -202,6 +202,7 @@ int main(void)
     }
 
     float theta = 0;
+    immediate_mode_begin(&glutil);
     for (;;) {
         uint64_t dt = begin_frame(&glutil);
 
@@ -216,6 +217,7 @@ int main(void)
 
         end_frame(&glutil);
     }
+    immediate_mode_end(&glutil);
 
     destroy(&glutil);
 
