@@ -120,6 +120,45 @@ int main(void) {
 // esse prefixo. O prefixo é incluído como um mecanismo que permita contornar 
 // situações de conflitos de nomes.
 
+/*********************************
+ *      INCOMPLETE TYPES         *
+ **********************************/
+// Lista completa de todos os tipos exportados pela lib,
+// só pra poder utilizar pointers de uns para os outros na definição dos tipos.
+
+struct GLutil_Color;
+struct GLutil_GLColor;
+
+struct  GLutil_Vec2i;
+struct  GLutil_Vec2f;
+struct  GLutil_Vec3f;
+struct  GLutil_Vec4f;
+union   GLutil_Mat2x2f;
+struct  GLutil_Mat3x3f;
+struct  GLutil_Mat4x4f;
+
+struct GLutil_3DBasis;
+struct GLutil_Camera;
+
+enum   GLutil_ShaderType;
+struct GLutil_ShaderProgram;
+
+struct GLutil_Vertex;
+struct GLutil_Vertices;
+struct GLutil_Faces;
+struct GLutil_ObjData;
+struct GLutil_Model;
+
+enum   X11_Codes;
+struct GLutil_MouseMove;
+struct GLutil_InputState;
+struct GLutil_Input;
+
+struct GLutil_PointLight;
+struct GLutil_PointLights;
+
+struct GLutil;
+
 
 /**********************************
  *          CORES                 *
@@ -128,7 +167,7 @@ int main(void) {
 // Definição de cor compátivel com a definição de outras libs, por exemplo, do raylib.  
 // O que é útil, pq dá pra integrar com essas libs, mas também, pq é possível 
 // CHUPINHAR o código deles heheheheh (checar licencas no final do arquivo)   
-typedef struct {
+typedef struct GLutil_Color {
     // 0 <= red, green, blue, alpha <= 255
     unsigned char red;  
     unsigned char green;
@@ -138,7 +177,7 @@ typedef struct {
                 
 
 // Definição de cor compátivel com a utilizada no GLSL 
-typedef struct {
+typedef struct GLutil_GLColor {
 //  0.0f <= r,g,b <= 1.0f.  
     float r;
     float g;
@@ -158,24 +197,24 @@ typedef struct {
  **********************************/
 
 // vetores
-typedef struct  {
+typedef struct GLutil_Vec2i {
     int x, y;
 } GLutil_Vec2i;
 
-typedef struct  {
+typedef struct  GLutil_Vec2f {
     float x, y;
 } GLutil_Vec2f;
 
-typedef struct {
+typedef struct GLutil_Vec3f {
     float x, y, z;
 } GLutil_Vec3f;
 
-typedef struct {
+typedef struct GLutil_Vec4f {
     float x, y, z, w;
 } GLutil_Vec4f;
 
 // matrizes
-typedef union {
+typedef union GLutil_Mat2x2f {
     float data[4];
 
     GLutil_Vec2f rows[2];
@@ -190,7 +229,7 @@ typedef union {
 
 typedef GLutil_Mat2x2f GLutil_Mat2f;
 
-typedef struct {
+typedef struct GLutil_Mat3x3f {
     union {
         float data[9];
 
@@ -208,7 +247,7 @@ typedef struct {
 
 typedef GLutil_Mat3x3f GLutil_Mat3f;
 
-typedef struct {
+typedef struct GLutil_Mat4x4f {
     union {
         float data[16];
 
@@ -240,11 +279,18 @@ typedef GLutil_Vec4f GLutil_Quaternion;
  *       CAMERA          *
  *************************/
 
-typedef struct {
+typedef struct GLutil_3DBasis {
     GLutil_Vec3f front, right, up; 
 } GLutil_3DBasis;
 
-typedef struct  {
+// @NOTE: Isso aqui deveria receber só a struct GLutil_Camera? 
+//        Soa mais razoável do que passar o estado da aplicação inteira.
+//        A única coisa que realmente precisa da struct GLutil é o input,
+//        então talvez mudar para algo como:
+//        void (*GLutil_camera_update_func)(Camera* cam, Input input); 
+typedef void (*GLutil_camera_update_func)(struct GLutil* glutil); 
+
+typedef struct GLutil_Camera {
     GLutil_Vec3f pos;
     GLutil_Vec3f target;
     GLutil_Vec3f up;
@@ -252,6 +298,8 @@ typedef struct  {
     float fovX;
     float near;
     float far;
+
+    GLutil_camera_update_func update;
 } GLutil_Camera;
 
 
@@ -265,13 +313,13 @@ typedef struct  {
 *      SHADERS && 3D MODELS     *
 ********************************/
 
-typedef enum {
+typedef enum GLutil_ShaderType {
     GLUTIL_PROGRAM_SHADER,
     GLUTIL_VERT_SHADER = GL_VERTEX_SHADER,
     GLUTIL_FRAG_SHADER = GL_FRAGMENT_SHADER,
 } GLutil_ShaderType;
 
-typedef struct {
+typedef struct GLutil_ShaderProgram {
     GLuint id;
 
     // Útil para reportar erros de compilação.
@@ -280,7 +328,7 @@ typedef struct {
 } GLutil_ShaderProgram;
 
 
-typedef struct {
+typedef struct GLutil_Vertex {
     GLutil_Vec3f pos;
 
     GLutil_GLColor color;
@@ -291,13 +339,13 @@ typedef struct {
 } GLutil_Vertex;
 
 
-typedef struct {
+typedef struct GLutil_Vertices {
     GLutil_Vertex* items;
     size_t         len;
     size_t         cap;
 } GLutil_Vertices;
 
-typedef struct {
+typedef struct GLutil_Faces {
     unsigned int* items;
     size_t        len;
     size_t        cap;
@@ -305,7 +353,7 @@ typedef struct {
 
 
 
-typedef struct {
+typedef struct GLutil_ObjData {
     GLutil_Vertices vertices;  // vertex data parsed from .obj file
     GLutil_Faces    faces;     // face   data parsed from .obj file
 
@@ -314,7 +362,7 @@ typedef struct {
                                     
 } GLutil_ObjData;
 
-typedef struct {
+typedef struct GLutil_Model {
     float             scale;
     GLutil_Vec3f      world_pos;
     GLutil_Quaternion orientation;
@@ -343,7 +391,7 @@ typedef struct {
 #define UP_ARROW    111
 
 
-typedef enum {
+typedef enum X11_Codes {
     MOUSE_BUTTON_RIGHT     = 1, 
     MOUSE_WHEEL_CLICK      = 2, 
     MOUSE_BUTTON_LEFT      = 3, 
@@ -353,13 +401,13 @@ typedef enum {
     MOUSE_SIDE_BUTTON_DOWN = 9, 
 } X11_Codes;
 
-typedef struct {
+typedef struct GLutil_MouseMove {
     bool         moved;
     GLutil_Vec2i last_pos;
     GLutil_Vec2i pos;
 } GLutil_MouseMove;
 
-typedef struct {
+typedef struct GLutil_InputState {
     bool down:    1; // 'down'    significa que no frame anterior esse botão/tecla não estava apertado e agora está
     bool up:      1; // 'up'      significa que no frame anterior esse botão/tecla estava apertado e agora não está mais
     bool pressed: 1; // 'pressed' significa que esse botão/tecla está sendo apertado
@@ -367,7 +415,7 @@ typedef struct {
 
 
 // @TODO: talvez refatorar input para um XMacro?
-typedef struct {
+typedef struct GLutil_Input {
     GLutil_InputState mouse_button_right;
     GLutil_InputState mouse_button_left;
     GLutil_MouseMove  mouse_movement;
@@ -388,7 +436,7 @@ typedef struct {
  *************************/
 
 // Uma fonte pontual de luz. Usada no fragment shader.
-typedef struct {
+typedef struct GLutil_PointLight {
     float          intensity;
     float          shine;
     GLutil_Vec3f   pos;
@@ -402,7 +450,7 @@ typedef struct {
 } GLutil_PointLight;
 
  // Array Dinâmico para armazenar todas as fontes pontuais de luz 
-typedef struct {
+typedef struct GLutil_PointLights {
     GLutil_PointLight* items;
     size_t             len;
     size_t             cap;
@@ -549,7 +597,17 @@ GLutil_Vec3f GLutil_camera_direction(GLutil_Camera* camera);
 GLutil_Vec3f GLutil_camera_right(GLutil_Camera* camera);
 GLutil_Vec3f GLutil_camera_up(GLutil_Camera* camera);
 GLutil_3DBasis GLutil_camera_basis(GLutil_Camera* camera);
+
+
+void GLutil_camera_update(GLutil* glutil);
+
+// orbiter camera
+void GLutil_camera_orbiter(GLutil* glutil);
+void GLutil_orbiter_camera_update(GLutil* glutil);
 GLutil_Camera GLutil_camera_orbit(GLutil_Camera camera, float theta, float phi);
+
+// @TODO: fps camera
+// ...
 
 // SHADERS
 GLutil_ShaderProgram GLutil_shader_new(const char* vert_shader, const char* frag_shader); // Cria um ShaderProgram através da compilação e linking do arquivos de shader nos parâmetros
@@ -876,7 +934,10 @@ void GLutil_print_framebuffer_status(GLenum status);
 #define camera_right      GLutil_camera_right
 #define camera_up         GLutil_camera_up
 #define camera_basis      GLutil_camera_basis
-#define camera_orbit      GLutil_camera_orbit
+
+#define camera_orbiter        GLutil_camera_orbiter
+#define orbiter_camera_update GLutil_orbiter_camera_update
+#define camera_orbit          GLutil_camera_orbit
 
 
 #define add_light                   GLutil_add_light
@@ -904,19 +965,6 @@ void GLutil_print_framebuffer_status(GLenum status);
 
 #ifdef GLUTIL_IMPLEMENTATION
 
-#define GLUTIL_DEFAULT_CAM_FOV  90.0f
-#define GLUTIL_DEFAULT_CAM_NEAR 0.1f
-#define GLUTIL_DEFAULT_CAM_FAR  1000.0f
-
-GLutil_Camera GLUTIL_DEFAULT_CAMERA = {
-    .pos =    { .x = 0.0f, .y = 0.0f, .z = 30.0f },
-    .target = { .x = 0.0f, .y = 0.0f, .z = 0.0f },
-    .up =     { .x = 0.0f, .y = 1.0f, .z = 0.0f },
-
-    .fovX = GLUTIL_DEFAULT_CAM_FOV,
-    .near = GLUTIL_DEFAULT_CAM_NEAR,
-    .far  = GLUTIL_DEFAULT_CAM_FAR,
-};
 
 #define GLUTIL_DIV_EPS 0.000001
 
@@ -1199,7 +1247,7 @@ void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h)
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    glutil->camera = GLUTIL_DEFAULT_CAMERA;
+    GLutil_camera_orbiter(glutil);
     glutil->input  = (GLutil_Input){0};
 
     glutil->lights = (GLutil_PointLights){};
@@ -2146,6 +2194,67 @@ void GLutil_immediate_mode_end(GLutil* glutil)
 /*******************************************************************************
  *                               CAMERA                                        *
  ******************************************************************************/
+
+void GLutil_orbiter_camera_update(GLutil* glutil)
+{
+// @TODO: deveriam ser parâmetros da câmera
+    const float mouse_sensiv = 0.03f;
+    #define STEP_SIZE 0.5f
+
+
+    if ( glutil->input.mouse_button_right.pressed && glutil->input.mouse_movement.moved ) { 
+        float cam_dist = Vec3f_length(Vec3f_sub(glutil->camera.pos, glutil->camera.target));
+        Vec2i delta = Vec2i_sub(glutil->input.mouse_movement.pos, glutil->input.mouse_movement.last_pos);
+        float theta = -mouse_sensiv * atan2f( delta.y, cam_dist );
+        float phi =   -mouse_sensiv * atan2f( delta.x, cam_dist );
+        glutil->camera = camera_orbit(glutil->camera, theta, phi);
+    }
+
+    Vec3f campos = glutil->camera.pos;
+    Vec3f camtrg = glutil->camera.target;
+
+    if ( glutil->input.arrow_up.pressed ) {
+        Vec3f dir = Vec3f_sub(camtrg, campos);
+        dir = Vec3f_normalize(dir);
+        Vec3f step = Vec3f_scale(dir, STEP_SIZE);
+        campos = Vec3f_add(campos, step);
+    }
+
+    if ( glutil->input.arrow_down.pressed ) {
+        Vec3f dir = Vec3f_sub(camtrg, campos);
+        dir = Vec3f_normalize(dir);
+        Vec3f step = Vec3f_scale(dir, STEP_SIZE);
+        campos = Vec3f_sub(campos, step);
+    };
+
+    glutil->camera.pos = campos;
+    glutil->camera.target = camtrg;
+}
+
+#define GLUTIL_ORBITER_CAM_FOV  90.0f
+#define GLUTIL_ORBITER_CAM_NEAR 0.1f
+#define GLUTIL_ORBITER_CAM_FAR  1000.0f
+void GLutil_camera_orbiter(GLutil* glutil)
+{
+    GLutil_Camera orbiter = {
+        .pos =    { .x = 0.0f, .y = 0.0f, .z = 30.0f },
+        .target = { .x = 0.0f, .y = 0.0f, .z = 0.0f },
+        .up =     { .x = 0.0f, .y = 1.0f, .z = 0.0f },
+
+        .fovX = GLUTIL_ORBITER_CAM_FOV,
+        .near = GLUTIL_ORBITER_CAM_NEAR,
+        .far  = GLUTIL_ORBITER_CAM_FAR,
+
+        .update = GLutil_orbiter_camera_update,
+    };
+    glutil->camera = orbiter;
+}
+
+void GLutil_camera_update(GLutil* glutil)
+{
+    if ( glutil->camera.update ) glutil->camera.update(glutil);
+}
+
 
 GLutil_Mat3x3f GLutil_model_matrix(GLutil_Camera cam)
 {
