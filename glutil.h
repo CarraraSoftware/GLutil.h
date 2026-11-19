@@ -288,6 +288,8 @@ typedef struct GLutil_3DBasis {
 //        A única coisa que realmente precisa da struct GLutil é o input,
 //        então talvez mudar para algo como:
 //        void (*GLutil_camera_update_func)(Camera* cam, Input input); 
+// @TODO: Adicionar float dt como parâmetro, para poder atualizar de
+//        maneira independente do frame rate.
 typedef void (*GLutil_camera_update_func)(struct GLutil* glutil); 
 
 typedef struct GLutil_Camera {
@@ -934,6 +936,8 @@ void GLutil_print_framebuffer_status(GLenum status);
 #define camera_right      GLutil_camera_right
 #define camera_up         GLutil_camera_up
 #define camera_basis      GLutil_camera_basis
+
+#define camera_update GLutil_camera_update
 
 #define camera_orbiter        GLutil_camera_orbiter
 #define orbiter_camera_update GLutil_orbiter_camera_update
