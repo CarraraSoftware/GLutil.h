@@ -4,44 +4,12 @@
 #define GLUTIL_IMPLEMENTATION
 #include "../../glutil.h"
 
-#define TWOBALLS 0
+#define TWOBALLS 1
 
 
 #define WINWIDTH  800
 #define WINHEIGHT 800
 
-void update_camera(GLutil* glutil)
-{
-    const float mouse_sensiv = 0.03f;
-    if ( glutil->input.mouse_button_right.pressed && glutil->input.mouse_movement.moved ) { 
-        float cam_dist = Vec3f_length(Vec3f_sub(glutil->camera.pos, glutil->camera.target));
-        Vec2i delta = Vec2i_sub(glutil->input.mouse_movement.pos, glutil->input.mouse_movement.last_pos);
-        float theta = -mouse_sensiv * atan2f( delta.y, cam_dist );
-        float phi =   -mouse_sensiv * atan2f( delta.x, cam_dist );
-        glutil->camera = camera_orbit(glutil->camera, theta, phi);
-    }
-
-    Vec3f campos = glutil->camera.pos;
-    Vec3f camtrg = glutil->camera.target;
-
-#define STEP_SIZE 0.5f
-    if ( glutil->input.arrow_up.pressed ) {
-        Vec3f dir = Vec3f_sub(camtrg, campos);
-        dir = Vec3f_normalize(dir);
-        Vec3f step = Vec3f_scale(dir, STEP_SIZE);
-        campos = Vec3f_add(campos, step);
-    }
-
-    if ( glutil->input.arrow_down.pressed ) {
-        Vec3f dir = Vec3f_sub(camtrg, campos);
-        dir = Vec3f_normalize(dir);
-        Vec3f step = Vec3f_scale(dir, STEP_SIZE);
-        campos = Vec3f_sub(campos, step);
-    };
-
-    glutil->camera.pos = campos;
-    glutil->camera.target = camtrg;
-}
 
 #define ASSETS_PATH "./examples/250-shadow/assets"
 
@@ -86,7 +54,7 @@ int main(void)
     ball.scale = 1.0f;
 
     int light_id = add_light(&g, (PointLight) {
-        .intensity =  0.0f,  
+        .intensity =  3.0f,  
         .shine     =  2.0f,  
         .pos       =  ball.world_pos,
         .clr       =  (GLColor) { 1.0f, 1.0f, 1.0f },  
@@ -98,14 +66,14 @@ int main(void)
 #if (TWOBALLS)
     Model ball2 = model_from_obj(&ball_obj);
     ball2.world_pos   = (Vec3f) {
-        .x = -1.0f,
-        .y =  1.5f,
-        .z = -1.0f,
+        .x = -2.0f,
+        .y =  2.5f,
+        .z = -2.0f,
     };
-    ball2.scale = 1.0f;
+    ball2.scale = 0.2f;
 
     int light_id2 = add_light(&g, (PointLight) {
-        .intensity =  0.0f,  
+        .intensity =  1.0f,  
         .shine     =  4.0f,  
         .pos       =  ball2.world_pos,
         .clr       =  (GLColor) { 1.0f, 1.0f, 1.0f },  
@@ -127,12 +95,13 @@ int main(void)
 
     const int models_count = sizeof(models) / sizeof(*models);
 
+
     for (;;) {
         begin_frame(&g);
         float t = GLutil_get_time_secs(&g);
 
 /************************** UPDATE ********************************************/
-            update_camera(&g);
+            camera_update(&g);
             float delta_angle = 0.01;
             Vec3f axis = (Vec3f) { 0.0f, 1.0f, 0.0f };
 
@@ -141,8 +110,8 @@ int main(void)
             }
 
             if ( g.input.space_bar.down ) {
-                ShaderProgram sh = shadow_shaders(); shader_reload(&sh);
-                ShaderProgram rd = render_shaders(); shader_reload(&rd);
+                shader_reload(shadow_shaders());
+                shader_reload(render_shaders());
             }
 
             cube.orientation = quat_mul(cube.orientation, quat_from_angle_axis(2 * delta_angle, axis));
