@@ -70,6 +70,14 @@ float get_shadow(vec4 ls_pos, int idx)
 }
 
 
+struct Material {
+    vec3  ambient;
+    vec3  diffuse;
+    vec3  specular;
+    float shineness;
+};
+
+
 void main()
 {
 #ifdef DEBUG_SHADOWMAP
@@ -77,12 +85,19 @@ void main()
     return;
 #endif
 
+    Material material;
+    material.ambient   = vec3(0.2, 0.2, 0.2);
+    material.diffuse   = vec3(0.2, 0.2, 0.2);
+    material.specular  = vec3(0.3, 0.3, 0.3);
+    material.shineness = 1.0;
 
-    vec3 light_source = vec3(0.5, 0.5, 0.5);
+    float light_constant  = 1.0;
+    float light_linear    = 0.0;
+    float light_quadratic = 0.0;
 
-    float ambient_intensity = 0.2;
-    vec3  ambient_color     = vec3(1.0, 1.0, 1.0);
-    ambient_color *= ambient_intensity;
+    vec3 light_source = vec3(1.0, 1.0, 1.0);
+
+    vec3 ambient_comp = vec3(1.0, 1.0, 1.0);
 
     for (int i = 0; i < MAX_LIGHTS; i++) {
         if ( i >= lights_count || length(vs_normal) < 0.001 ) {
@@ -96,30 +111,34 @@ void main()
 
         vec4 lightspace_pos   = vs_lightspace_pos[i];
         
-        vec3 norm = normalize(vs_normal);
-
-        float d = distance(light_pos, vs_pos);
-        d = d == 0 ? 0.1f : d;
-
-        float diffuse_intensity = 0.5f; // light_intensity / (d*d);
+        vec3 norm       = normalize(vs_normal);
         vec3 light_dir  = normalize(light_pos - vs_pos);
-        vec3 diffuse_color = max(dot(norm, light_dir), 0.0) * light_clr;
-        diffuse_color *= diffuse_intensity;
+
+        float diffuse_comp = max(dot(norm, light_dir), 0.0);
 
         vec3 light_ray = reflect(-light_dir, norm);
         vec3 camera_dir = normalize(camera_pos - vs_pos);
+        float specular_alignment = max(dot(camera_dir, light_ray), 0.0);
+        float specular_comp = pow(specular_alignment, material.shineness);
 
-        float specular_intensity = 10.0f; // light_intensity;
-        specular_intensity = specular_intensity / d;
-        float shine = light_shine;
-        float specular_alignment = max(dot(camera_dir, light_ray), 0.0f);
-        vec3 specular_color = pow(specular_alignment, shine) * light_clr;
-        specular_color *= specular_intensity;
+        float d = distance(light_pos, vs_pos);
+        float attenuation = light_intensity / (
+                light_constant +
+                light_linear*d +
+                light_quadratic * d * d
+        );
+
+        vec3 ambient  = /* light_ambient  * */ ambient_comp  * material.ambient;
+        vec3 diffuse  = /* light_diffuse  * */ diffuse_comp  * material.diffuse;
+        vec3 specular = /* light_specular * */ specular_comp * material.specular;
+        ambient  *= attenuation;
+        diffuse  *= attenuation;
+        specular *= attenuation;
 
         float shadow = get_shadow(lightspace_pos, i);
-        light_source += ( ( /*light_intensity */ shadow * (diffuse_color + specular_color ) ) / lights_count );  
+        light_source *=  ambient + shadow * (diffuse + specular);  
     }
-    light_source += ambient_color;
+    // light_source += ambient_color;
 
     vec3 final_color;
 

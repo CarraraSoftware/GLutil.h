@@ -17,8 +17,8 @@ uniform mat4 proj_mat;
 quaternion quat_from_angle_axis(float angle, vec3 axis)
 {
     quaternion quat;
-    float s = sin(angle);
-    float c = cos(angle);
+    float s = sin(angle / 2.0f);
+    float c = cos(angle / 2.0f);
     quat.w = c;
     quat.x = axis.x * s;
     quat.y = axis.y * s;
