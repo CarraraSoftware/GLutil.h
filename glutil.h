@@ -47,6 +47,7 @@ int main(void) {
     init(&glutil, 800, 600);                 // inicializa a struct que gerencia todo o estado da aplicação                                 
     set_target_fps(&glutil, 60.0f);
 
+    immediate_mode_begin(&glutil);
     for (;;) {
         uint64_t dt = begin_frame(&glutil);  // processa todos os eventos do X11 e tudo mais que for necessário pra conseguir colocar os pixels na tela
             clear_bg(BLACK);
@@ -57,6 +58,7 @@ int main(void) {
             );                                                                
         end_frame(&glutil);                  // exibe os pixels (isto é, faz o swap dos buffers), atualiza o estado interno e qualquer outra coisa que precise antes do próximo frame
     }                                                                         
+    immediate_mode_end(&glutil);
                                                                               
     destroy(&glutil);                                                         
     return 0;                                                                 
@@ -389,26 +391,272 @@ typedef struct GLutil_Model {
  *       INPUT           *
  *************************/
 
-// a merda do X11...
-#define SPACE       'A'  // ????
-#define F1          'C'
-#define F2          'D'
-#define RIGHT_ARROW 114
-#define LEFT_ARROW  113
-#define DOWN_ARROW  116
-#define UP_ARROW    111
+typedef enum {
+    X11_MOUSE_BUTTON_RIGHT     = 1, 
+    X11_MOUSE_WHEEL_CLICK      = 2, 
+    X11_MOUSE_BUTTON_LEFT      = 3, 
+    X11_MOUSE_WHEEL_UP         = 4, 
+    X11_MOUSE_WHEEL_DOWN       = 5, 
+    X11_MOUSE_SIDE_BUTTON_UP   = 8, 
+    X11_MOUSE_SIDE_BUTTON_DOWN = 9, 
+} X11_MouseButtons;
 
 
+// /usr/share/X11/xkb/keycodes
+typedef enum {
+  	X11_NUM_1                  =  10,  // <AE01>
+	X11_NUM_2                  =  11,  // <AE02>
+	X11_NUM_3                  =  12,  // <AE03>
+	X11_NUM_4                  =  13,  // <AE04>
+	X11_NUM_5                  =  14,  // <AE05>
+	X11_NUM_6                  =  15,  // <AE06>
+	X11_NUM_7                  =  16,  // <AE07>
+	X11_NUM_8                  =  17,  // <AE08>
+	X11_NUM_9                  =  18,  // <AE09>
+	X11_NUM_0                  =  19,  // <AE10>
+    X11_MINUS                  =  20,  // <AE11> 
+	X11_EQUALS                 =  21,  // <AE12>
+    X11_BACKSPACE              =  22,  // <BKSP>
+    
+    X11_TAB                    =  23,  // <TAB>
+	X11_Q                      =  24,  // <AD01>
+	X11_W                      =  25,  // <AD02>
+	X11_E                      =  26,  // <AD03>
+	X11_R                      =  27,  // <AD04>
+	X11_T                      =  28,  // <AD05>
+	X11_Y                      =  29,  // <AD06>
+	X11_U                      =  30,  // <AD07>
+	X11_I                      =  31,  // <AD08>
+	X11_O                      =  32,  // <AD09>
+	X11_P                      =  33,  // <AD10>
+	X11_LEFT_BRACKET           =  34,  // <AD11>
+	X11_RIGHT_BRACKET          =  35,  // <AD12>
+    X11_BACKSLASH              =  51,  // <BKSL>
+    X11_RETURN                 =  36,  // <RTRN>
 
-typedef enum X11_Codes {
-    MOUSE_BUTTON_RIGHT     = 1, 
-    MOUSE_WHEEL_CLICK      = 2, 
-    MOUSE_BUTTON_LEFT      = 3, 
-    MOUSE_WHEEL_UP         = 4, 
-    MOUSE_WHEEL_DOWN       = 5, 
-    MOUSE_SIDE_BUTTON_UP   = 8, 
-    MOUSE_SIDE_BUTTON_DOWN = 9, 
-} X11_Codes;
+    X11_CAPS                   =  66,  // <CAPS>
+	X11_A                      =  38,  // <AC01>
+	X11_S                      =  39,  // <AC02> 
+	X11_D                      =  40,  // <AC03> 
+	X11_F                      =  41,  // <AC04> 
+	X11_G                      =  42,  // <AC05> 
+	X11_H                      =  43,  // <AC06> 
+	X11_J                      =  44,  // <AC07> 
+	X11_K                      =  45,  // <AC08> 
+	X11_L                      =  46,  // <AC09> 
+    X11_SEMICOLON              =  47,  // <AC10>
+    X11_SINGLE_QUOTE           =  48,  // <AC11>
+    X11_TILDE                  =  49,  // <TLDE>
+
+ 	X11_LEFT_SHIFT             =  50,  // <LFSH> 
+	X11_LESS_GREATER_THAN      =  94,  // <LSGT> , @NOTE: layout europeu tem uma única tecla para menor E maior que?
+	X11_Z                      =  52,  // <AB01>
+	X11_X                      =  53,  // <AB02>
+	X11_C                      =  54,  // <AB03>
+	X11_V                      =  55,  // <AB04>
+	X11_B                      =  56,  // <AB05>
+	X11_N                      =  57,  // <AB06>
+	X11_M                      =  58,  // <AB07>
+	X11_COMMA                  =  59,  // <AB08>
+	X11_PERIOD                 =  60,  // <AB09>
+	X11_FORWARD_SLASH          =  61,  // <AB10>
+	X11_RIGHT_SHIFT            =  62,  // <RTSH>
+
+    X11_LEFT_CONTROL           =  37,  // <LCTL>
+	X11_LEFT_SUPER             = 133,  // <LWIN>
+	X11_LEFT_ALT               =  64,  // <LALT>
+	X11_SPACE                  =  65,  // <SPCE>
+	X11_RIGHT_ALT              = 108,  // <RALT>
+	X11_RIGHT_SUPER            = 134,  // <RWIN>
+	X11_MENU_COMPOSE           = 135,  // <COMP>
+	X11_RIGHT_CONTROL          = 105,  // <RCTL>
+
+    X11_ESC                    =   9,  // <ESC>
+	X11_F1                     =  67,  // <FK01>
+	X11_F2                     =  68,  // <FK02>
+	X11_F3                     =  69,  // <FK03>
+	X11_F4                     =  70,  // <FK04>
+	X11_F5                     =  71,  // <FK05>
+	X11_F6                     =  72,  // <FK06>
+	X11_F7                     =  73,  // <FK07>
+	X11_F8                     =  74,  // <FK08>
+	X11_F9                     =  75,  // <FK09>
+	X11_F10                    =  76,  // <FK10>
+	X11_F11                    =  95,  // <FK11>
+	X11_F12                    =  96,  // <FK12>
+
+    X11_PRINT_SCREEN           = 107, // <PRSC>
+	X11_SCROLL_LOCK            =  78, // <SCLK>
+	X11_PAUSE                  = 127, // <PAUS>
+
+    X11_INSERT                 = 118, // <INS>
+	X11_HOME                   = 110, // <HOME>
+	X11_PAGE_UP                = 112, // <PGUP>
+
+	X11_DELETE                 = 119, // <DELE>
+	X11_END                    = 115, // <END>
+	X11_PAGE_DOWN              = 117, // <PGDN>
+
+	X11_ARROW_UP               = 111, // <UP>
+	X11_ARROW_LEFT             = 113, // <LEFT>
+	X11_ARROW_DOWN             = 116, // <DOWN>
+	X11_ARROW_RIGHT            = 114, // <RGHT>
+	X11_NUMLOCK                =  77, // <NMLK>
+	X11_KEYPAD_DIVIDE          = 106, // <KPDV>
+	X11_KEYPAD_MULTIPLY        =  63, // <KPMU>
+	X11_KEYPAD_SUBTRACT        =  82, // <KPSU>
+    X11_KEYPAD_7               =  79, // <KP7>
+    X11_KEYPAD_8               =  80, // <KP8>
+    X11_KEYPAD_9               =  81, // <KP9>
+    X11_KEYPAD_ADD             =  86, // <KPAD>
+	X11_KEYPAD_4               =  83, // <KP4>
+	X11_KEYPAD_5               =  84, // <KP5>
+	X11_KEYPAD_6               =  85, // <KP6>
+	X11_KEYPAD_1               =  87, // <KP1>
+	X11_KEYPAD_2               =  88, // <KP2>
+	X11_KEYPAD_3               =  89, // <KP3>
+	X11_KEYPAD_ENTER           = 104, // <KPEN>
+	X11_KEYPAD_0               =  90, // <KP0>
+	X11_KEYPAD_DELETE          =  91, // <KPDL>
+	X11_KEYPAD_EQUALS          = 125, // <KPEQ>
+	X11_F13                    = 191, // <FK13>
+	X11_F14                    = 192, // <FK14>
+	X11_F15                    = 193, // <FK15>
+	X11_F16                    = 194, // <FK16>
+	X11_F17                    = 195, // <FK17>
+	X11_F18                    = 196, // <FK18>
+	X11_F19                    = 197, // <FK19>
+	X11_F20                    = 198, // <FK20>
+	X11_F21                    = 199, // <FK21>
+	X11_F22                    = 200, // <FK22>
+	X11_F23                    = 201, // <FK23>
+	X11_F24                    = 202, // <FK24>
+
+} X11_KeyCodes;
+
+
+//    X11 KEYCODE              STRUCT FIELD NAME
+#define X11_KEYBOARD_EVENTS \
+    X(X11_NUM_1              , num_1               ) \
+    X(X11_NUM_2              , num_2               ) \
+    X(X11_NUM_3              , num_3               ) \
+    X(X11_NUM_4              , num_4               ) \
+    X(X11_NUM_5              , num_5               ) \
+    X(X11_NUM_6              , num_6               ) \
+    X(X11_NUM_7              , num_7               ) \
+    X(X11_NUM_8              , num_8               ) \
+    X(X11_NUM_9              , num_9               ) \
+    X(X11_NUM_0              , num_0               ) \
+    X(X11_MINUS              , minus               ) \
+    X(X11_EQUALS             , equals              ) \
+    X(X11_BACKSPACE          , backspace           ) \
+    X(X11_TAB                , tab                 ) \
+    X(X11_Q                  , q                   ) \
+    X(X11_W                  , w                   ) \
+    X(X11_E                  , e                   ) \
+    X(X11_R                  , r                   ) \
+    X(X11_T                  , t                   ) \
+    X(X11_Y                  , y                   ) \
+    X(X11_U                  , u                   ) \
+    X(X11_I                  , i                   ) \
+    X(X11_O                  , o                   ) \
+    X(X11_P                  , p                   ) \
+    X(X11_LEFT_BRACKET       , left_bracket        ) \
+    X(X11_RIGHT_BRACKET      , right_bracket       ) \
+    X(X11_BACKSLASH          , backslash           ) \
+    X(X11_RETURN             , key_return          ) \
+    X(X11_CAPS               , caps                ) \
+    X(X11_A                  , a                   ) \
+    X(X11_S                  , s                   ) \
+    X(X11_D                  , d                   ) \
+    X(X11_F                  , f                   ) \
+    X(X11_G                  , g                   ) \
+    X(X11_H                  , h                   ) \
+    X(X11_J                  , j                   ) \
+    X(X11_K                  , k                   ) \
+    X(X11_L                  , l                   ) \
+    X(X11_SEMICOLON          , semicolon           ) \
+    X(X11_SINGLE_QUOTE       , single_quote        ) \
+    X(X11_TILDE              , tilde               ) \
+    X(X11_LEFT_SHIFT         , left_shift          ) \
+    X(X11_LESS_GREATER_THAN  , less_greater_than   ) \
+    X(X11_Z                  , z                   ) \
+    X(X11_X                  , x                   ) \
+    X(X11_C                  , c                   ) \
+    X(X11_V                  , v                   ) \
+    X(X11_B                  , b                   ) \
+    X(X11_N                  , n                   ) \
+    X(X11_M                  , m                   ) \
+    X(X11_COMMA              , comma               ) \
+    X(X11_PERIOD             , period              ) \
+    X(X11_FORWARD_SLASH      , forward_slash       ) \
+    X(X11_RIGHT_SHIFT        , right_shift         ) \
+    X(X11_LEFT_CONTROL       , left_control        ) \
+    X(X11_LEFT_SUPER         , left_super          ) \
+    X(X11_LEFT_ALT           , left_alt            ) \
+    X(X11_SPACE              , space_bar           ) \
+    X(X11_RIGHT_ALT          , right_alt           ) \
+    X(X11_RIGHT_SUPER        , right_super         ) \
+    X(X11_MENU_COMPOSE       , menu_compose        ) \
+    X(X11_RIGHT_CONTROL      , right_control       ) \
+    X(X11_ESC                , esc                 ) \
+    X(X11_F1                 , f1                  ) \
+    X(X11_F2                 , f2                  ) \
+    X(X11_F3                 , f3                  ) \
+    X(X11_F4                 , f4                  ) \
+    X(X11_F5                 , f5                  ) \
+    X(X11_F6                 , f6                  ) \
+    X(X11_F7                 , f7                  ) \
+    X(X11_F8                 , f8                  ) \
+    X(X11_F9                 , f9                  ) \
+    X(X11_F10                , f10                 ) \
+    X(X11_F11                , f11                 ) \
+    X(X11_F12                , f12                 ) \
+    X(X11_PRINT_SCREEN       , print_screen        ) \
+    X(X11_SCROLL_LOCK        , scroll_lock         ) \
+    X(X11_PAUSE              , pause               ) \
+    X(X11_INSERT             , insert              ) \
+    X(X11_HOME               , home                ) \
+    X(X11_PAGE_UP            , page_up             ) \
+    X(X11_DELETE             , delete              ) \
+    X(X11_END                , end                 ) \
+    X(X11_PAGE_DOWN          , page_down           ) \
+    X(X11_ARROW_UP           , arrow_up            ) \
+    X(X11_ARROW_LEFT         , arrow_left          ) \
+    X(X11_ARROW_DOWN         , arrow_down          ) \
+    X(X11_ARROW_RIGHT        , arrow_right         ) \
+    X(X11_NUMLOCK            , numlock             ) \
+    X(X11_KEYPAD_DIVIDE      , keypad_divide       ) \
+    X(X11_KEYPAD_MULTIPLY    , keypad_multiply     ) \
+    X(X11_KEYPAD_SUBTRACT    , keypad_subtract     ) \
+    X(X11_KEYPAD_7           , keypad_7            ) \
+    X(X11_KEYPAD_8           , keypad_8            ) \
+    X(X11_KEYPAD_9           , keypad_9            ) \
+    X(X11_KEYPAD_ADD         , keypad_add          ) \
+    X(X11_KEYPAD_4           , keypad_4            ) \
+    X(X11_KEYPAD_5           , keypad_5            ) \
+    X(X11_KEYPAD_6           , keypad_6            ) \
+    X(X11_KEYPAD_1           , keypad_1            ) \
+    X(X11_KEYPAD_2           , keypad_2            ) \
+    X(X11_KEYPAD_3           , keypad_3            ) \
+    X(X11_KEYPAD_ENTER       , keypad_enter        ) \
+    X(X11_KEYPAD_0           , keypad_0            ) \
+    X(X11_KEYPAD_DELETE      , keypad_delete       ) \
+    X(X11_KEYPAD_EQUALS      , keypad_equals       ) \
+    X(X11_F13                , f13                 ) \
+    X(X11_F14                , f14                 ) \
+    X(X11_F15                , f15                 ) \
+    X(X11_F16                , f16                 ) \
+    X(X11_F17                , f17                 ) \
+    X(X11_F18                , f18                 ) \
+    X(X11_F19                , f19                 ) \
+    X(X11_F20                , f20                 ) \
+    X(X11_F21                , f21                 ) \
+    X(X11_F22                , f22                 ) \
+    X(X11_F23                , f23                 ) \
+    X(X11_F24                , f24                 ) 
+
+
 
 typedef struct GLutil_MouseMove {
     bool         moved;
@@ -429,11 +677,10 @@ typedef struct GLutil_Input {
     GLutil_InputState mouse_button_left;
     GLutil_MouseMove  mouse_movement;
     
-    GLutil_InputState arrow_up;
-    GLutil_InputState arrow_down;
-    GLutil_InputState space_bar;
-    GLutil_InputState f1;
-    GLutil_InputState f2;
+#define X(_, key) GLutil_InputState key;
+    X11_KEYBOARD_EVENTS
+#undef X
+
 } GLutil_Input;
 
 // .
@@ -2574,11 +2821,13 @@ void GLutil_compute_shadow_maps(GLutil* g, int models_count, GLutil_Model** mode
  ******************************************************************************/
 void GLutil_update_input(GLutil* glutil)
 {
-    glutil->input.space_bar.down = false;
+#define X(_, field) \
+    glutil->input.field.down = false;
+X11_KEYBOARD_EVENTS
+#undef X
 
-    glutil->input.arrow_up.down = false;
-    glutil->input.arrow_down.down = false;
 
+    // MOUSE EVENTS. ainda não foram automatizados com XMACROS.
     glutil->input.mouse_button_left.down = false;
     glutil->input.mouse_button_right.down = false;
 
@@ -2591,68 +2840,43 @@ void GLutil_update_input(GLutil* glutil)
         XNextEvent(glutil->display, &event);
 
         if (event.type == KeyPress) {
-            if (event.xkey.keycode == F1) {
-                glutil->input.f1.down    = true;
-                glutil->input.f1.pressed = true;
+#define X(x11_symbol, field) \
+            if (event.xkey.keycode == x11_symbol ) { \
+                glutil->input.field.down    = true;  \
+                glutil->input.field.pressed = true;  \
             }
-            if (event.xkey.keycode == F2) {
-                glutil->input.f2.down    = true;
-                glutil->input.f2.pressed = true;
-            }
-            if (event.xkey.keycode == SPACE) {
-                glutil->input.space_bar.down    = true;
-                glutil->input.space_bar.pressed = true;
-            }
-            if (event.xkey.keycode == UP_ARROW) {
-                glutil->input.arrow_up.down    = true;
-                glutil->input.arrow_up.pressed = true;
-            }
-            if (event.xkey.keycode == DOWN_ARROW) {
-                glutil->input.arrow_down.down    = true;
-                glutil->input.arrow_down.pressed = true;
-            }
+X11_KEYBOARD_EVENTS
+#undef X
+
         }
 
         if (event.type == KeyRelease) {
-            if (event.xkey.keycode == F1) {
-                glutil->input.f1.down    = false;
-                glutil->input.f1.pressed = false;
+#define X(x11_symbol, field) \
+            if (event.xkey.keycode == x11_symbol ) { \
+                glutil->input.field.down    = false;  \
+                glutil->input.field.pressed = false;  \
             }
-            if (event.xkey.keycode == F2) {
-                glutil->input.f2.down    = false;
-                glutil->input.f2.pressed = false;
-            }
-            if (event.xkey.keycode == SPACE) {
-                glutil->input.space_bar.down    = false;
-                glutil->input.space_bar.pressed = false;
-            }
-            if (event.xkey.keycode == UP_ARROW) {
-                glutil->input.arrow_up.down    = false;
-                glutil->input.arrow_up.pressed = false;
-            }
-            if (event.xkey.keycode == DOWN_ARROW) {
-                glutil->input.arrow_down.down    = false;
-                glutil->input.arrow_down.pressed = false;
-            }
+X11_KEYBOARD_EVENTS
+#undef X
         }
 
         if (event.type == ButtonPress) {
-            if (event.xbutton.button == MOUSE_BUTTON_RIGHT) {
+            if (event.xbutton.button == X11_MOUSE_BUTTON_RIGHT) {
                 glutil->input.mouse_button_right.down    = true;
                 glutil->input.mouse_button_right.pressed = true;
             }
-            if (event.xbutton.button == MOUSE_BUTTON_LEFT) {
+            if (event.xbutton.button == X11_MOUSE_BUTTON_LEFT) {
                 glutil->input.mouse_button_left.down    = true;
                 glutil->input.mouse_button_left.pressed = true;
             }
         }
 
         if (event.type == ButtonRelease) {
-            if (event.xbutton.button == MOUSE_BUTTON_RIGHT) {
+            if (event.xbutton.button == X11_MOUSE_BUTTON_RIGHT) {
                 glutil->input.mouse_button_right.down    = false;
                 glutil->input.mouse_button_right.pressed = false;
             }
-            if (event.xbutton.button == MOUSE_BUTTON_LEFT) {
+            if (event.xbutton.button == X11_MOUSE_BUTTON_LEFT) {
                 glutil->input.mouse_button_left.down    = false;
                 glutil->input.mouse_button_left.pressed = false;
             }
