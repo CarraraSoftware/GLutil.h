@@ -11,6 +11,10 @@ clock:
 	gcc -o $(OUT_DIR)clock examples/10-clock.c $(LINKER_FLAGS)
 	$(OUT_DIR)clock
 
+texture:
+	gcc -o $(OUT_DIR)tex examples/15-render_texture.c $(LINKER_FLAGS)
+	$(OUT_DIR)tex
+
 particles:
 	gcc -o $(OUT_DIR)particles examples/20-particles.c  $(LINKER_FLAGS)
 	$(OUT_DIR)particles

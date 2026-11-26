@@ -918,6 +918,7 @@ void GLutil_render_model(GLutil* glutil, GLutil_Model* model);
 void GLutil_setup_fullscreen_buffer(GLutil* g);
 GLuint GLutil_generate_texture_2D();
 GLuint GLutil_texture_from_pixels(int img_width, int img_height, unsigned char* pixels);
+GLuint GLutil_texture_from_pixels_opt(int img_width, int img_height, unsigned char* pixels, GLenum texture_pixel_fmt, GLenum data_pixel_fmt);
 GLuint GLutil_texture_from_image(const char* image_file_name);
 void GLutil_render_texture(GLutil* g, GLuint texture, int unit, float x, float y, float w, float h);
 
@@ -1194,11 +1195,12 @@ void GLutil_print_framebuffer_status(GLenum status);
 #define make_model       GLutil_make_model
 #define render_model     GLutil_render_model
 
-#define setup_fullscreen    GLutil_setup_fullscreen_buffer // why is this here?
-#define generate_texture_2D GLutil_generate_texture_2D
-#define texture_from_pixels GLutil_texture_from_pixels
-#define texture_from_image  GLutil_texture_from_image
-#define render_texture      GLutil_render_texture
+#define setup_fullscreen        GLutil_setup_fullscreen_buffer // why is this here?
+#define generate_texture_2D     GLutil_generate_texture_2D
+#define texture_from_pixels_opt GLutil_texture_from_pixels_opt
+#define texture_from_pixels     GLutil_texture_from_pixels
+#define texture_from_image      GLutil_texture_from_image
+#define render_texture          GLutil_render_texture
 
 #define model_matrix      GLutil_model_matrix
 #define view_matrix       GLutil_view_matrix
@@ -3223,22 +3225,27 @@ GLuint GLutil_generate_texture_2D() {
 }
 
 
-GLuint GLutil_texture_from_pixels(int img_width, int img_height, unsigned char* pixels)
+GLuint GLutil_texture_from_pixels_opt(int img_width, int img_height, unsigned char* pixels, GLenum texture_pixel_fmt, GLenum data_pixel_fmt)
 {
     GLuint texture_id = GLutil_generate_texture_2D();
     glTexImage2D(
-        GL_TEXTURE_2D, 0, GL_RGB,
+        GL_TEXTURE_2D, 0, texture_pixel_fmt,
         img_width, img_height,
-        0, GL_RGB, GL_UNSIGNED_BYTE, // @TODO: PixelFormat (RGB) deveria ser um parâmetro
+        0, data_pixel_fmt, GL_UNSIGNED_BYTE,
         pixels
     ); GLUTIL_CHECK_GL_ERROR();
     glGenerateMipmap(GL_TEXTURE_2D); GLUTIL_CHECK_GL_ERROR();
     return texture_id;
 }
 
+GLuint GLutil_texture_from_pixels(int img_width, int img_height, unsigned char* pixels)
+{
+    return GLutil_texture_from_pixels_opt(img_width, img_height, pixels, GL_RGB, GL_RGB);
+}
+
 GLuint GLutil_texture_from_image(const char* image_file_name)
 {
-    printf("Loading Texture '%s'\n", image_file_name);
+    printf("Loading Texture From Image '%s'\n", image_file_name);
     int img_width, img_height, n;
     unsigned char *data = stbi_load(image_file_name, &img_width, &img_height, &n, 0);
 
@@ -3247,10 +3254,20 @@ GLuint GLutil_texture_from_image(const char* image_file_name)
         exit(1);
     }
 
-    GLuint texture_id = GLutil_texture_from_pixels(img_width, img_height, data);
-    stbi_image_free(data);
-
+    GLuint texture_id;
+    if ( n == 4 ) {
+        texture_id = GLutil_texture_from_pixels_opt(img_width, img_height, data, GL_RGBA, GL_RGBA);
+    } else if ( n == 3 ) {
+        texture_id = GLutil_texture_from_pixels(img_width, img_height, data);
+    } else {
+        texture_id = -1;
+        printf("       ╰─ NOT OK. Image have n = %d color channels. Loader only handler n = 3 or n = 4.\n", n);
+        goto end;
+    }
     printf("       ╰─ OK.\n");
+
+end:
+    stbi_image_free(data);
     return texture_id;
 }
 
@@ -3263,7 +3280,7 @@ void GLutil_render_texture(GLutil* g, GLuint texture, int unit, float x, float y
     shader_add_vec4f(*g->texture_shader, "texture_pos_size", 
         (Vec4f) { 
             .x = x, .y = y,
-            .w = w, .z = h
+            .z = w, .w = h, 
         }
     );
 
