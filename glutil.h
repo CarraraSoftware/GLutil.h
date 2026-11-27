@@ -779,6 +779,9 @@ typedef struct GLutil {
 void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h);              // inicializa Display, Window e o OpenGLContext. e mais alguns estados internos
 void GLutil_destroy(GLutil* glutil);                                           // desaloca e fecha todos os recursos alocados por GLutil.h
 
+void GLutil_hide_cursor(GLutil* glutil);
+
+
 // FRAME LOOP
 uint64_t GLutil_get_time_nanos(void);                                          // retorna o número de nanosegundos desde o UNIX epoch
 float    GLutil_get_time_secs(GLutil* glutil);                                 // retorna o número de segundos dedsde o UNIX epoch. @NOTE: esse função calcula o número de segundos com base no valor de nanosegundos armazenado na struct GLutil, que é atualizada com base no delta dos fraames, ao invés de fazer outra systemcall .
@@ -865,13 +868,17 @@ GLutil_3DBasis GLutil_camera_basis(GLutil_Camera* camera);
 
 void GLutil_camera_update(GLutil* glutil);
 
-// orbiter camera
+// atualiza a posição da câmera para avançar um passo na direção da tecla pressionada
+void GLutil_camera_update_step(GLutil* glutil, float step_size);
+
+// orbiter camera: mantém sempre o mesmo target, mas muda a posição da câmera pra orbitar ao redor do target
 void GLutil_camera_orbiter(GLutil* glutil);
 void GLutil_orbiter_camera_update(GLutil* glutil);
 GLutil_Camera GLutil_camera_orbit(GLutil_Camera camera, float theta, float phi);
 
-// @TODO: fps camera
-// ...
+// first person camera: mantém sempre a mesma posição, mas muda o target pra apontar pra onde o mouse aponta
+void GLutil_camera_first_person(GLutil* glutil);
+void GLutil_first_person_camera_update(GLutil* glutil);
 
 // SHADERS
 GLutil_ShaderProgram GLutil_shader_new(const char* vert_shader, const char* frag_shader); // Cria um ShaderProgram através da compilação e linking do arquivos de shader nos parâmetros
@@ -1210,11 +1217,15 @@ void GLutil_print_framebuffer_status(GLenum status);
 #define camera_up         GLutil_camera_up
 #define camera_basis      GLutil_camera_basis
 
-#define camera_update GLutil_camera_update
+#define camera_update      GLutil_camera_update
+#define camera_update_step GLutil_camera_update_step
 
 #define camera_orbiter        GLutil_camera_orbiter
 #define orbiter_camera_update GLutil_orbiter_camera_update
 #define camera_orbit          GLutil_camera_orbit
+
+#define camera_first_person        GLutil_camera_first_person
+#define first_person_camera_update GLutil_first_person_camera_update
 
 
 #define add_light                   GLutil_add_light
@@ -1514,6 +1525,8 @@ void GLutil_init(GLutil* glutil, unsigned int w, unsigned int h)
     GLutil_make_fbc_and_vi(glutil);
     GLutil_make_window(glutil, w, h);
     GLutil_make_context(glutil);
+    GLutil_hide_cursor(glutil);
+
 
 #ifndef GLUTIL_NO_GL_LEGACY // @NOTE: o debugger renderdoc não suporta essas funções legadas, por isso esse macro
     // permite usar a api legado do OpenGL, mas não afeta o uso de shaders
@@ -1556,6 +1569,29 @@ void GLutil_destroy(GLutil* glutil)
 }
 
 
+void GLutil_hide_cursor(GLutil* glutil) {
+    Pixmap blank;
+    XColor dummy;
+    char data[1] = {0};
+
+    blank = XCreateBitmapFromData(glutil->display, glutil->window, data, 1, 1);
+    Cursor cursor = XCreatePixmapCursor(glutil->display, blank, blank, &dummy, &dummy, 0, 0);
+    XDefineCursor(glutil->display, glutil->window, cursor);
+    int status = XGrabPointer(
+        glutil->display,
+        glutil->window,
+        False,
+        ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
+        GrabModeAsync,
+        GrabModeAsync,
+        glutil->window, // confine_to: keep pointer inside window
+        cursor,
+        CurrentTime
+    );
+    XFreePixmap(glutil->display, blank);
+    XFreeCursor(glutil->display, cursor);
+    XFlush(glutil->display);
+}
 
 void GLutil_check_gl_error_(int line, const char* file, const char* func)
 {
@@ -2500,7 +2536,7 @@ void GLutil_orbiter_camera_update(GLutil* glutil)
 {
 // @TODO: deveriam ser parâmetros da câmera
     const float mouse_sensiv = 0.03f;
-    #define STEP_SIZE 0.5f
+    const float step_size    = 0.5f;
 
 
     if ( glutil->input.mouse_button_right.pressed && glutil->input.mouse_movement.moved ) { 
@@ -2511,26 +2547,48 @@ void GLutil_orbiter_camera_update(GLutil* glutil)
         glutil->camera = camera_orbit(glutil->camera, theta, phi);
     }
 
-    Vec3f campos = glutil->camera.pos;
-    Vec3f camtrg = glutil->camera.target;
+    GLutil_camera_update_step(glutil, step_size);
+}
 
-    if ( glutil->input.arrow_up.pressed ) {
-        Vec3f dir = Vec3f_sub(camtrg, campos);
-        dir = Vec3f_normalize(dir);
-        Vec3f step = Vec3f_scale(dir, STEP_SIZE);
-        campos = Vec3f_add(campos, step);
+void GLutil_first_person_camera_update(GLutil* glutil)
+{
+    const float mouse_sensiv = 0.08f;
+    const float step_size    = 0.5f;
+
+    if ( glutil->input.mouse_movement.moved ) { 
+        float cam_dist = Vec3f_length(Vec3f_sub(glutil->camera.pos, glutil->camera.target));
+        Vec2i delta = Vec2i_sub(glutil->input.mouse_movement.pos, glutil->input.mouse_movement.last_pos);
+        float theta = -mouse_sensiv * atan2f( delta.y, cam_dist );
+        float phi =   -mouse_sensiv * atan2f( delta.x, cam_dist );
+
+
+        GLutil_Camera cam = glutil->camera;
+        GLutil_3DBasis cam_basis = GLutil_camera_basis(&cam);
+
+        Vec3f rotated_x = GLutil_Vec3f_sub(cam.target, cam.pos);
+        Vec3f rotated_y = rotated_x;
+
+        float zenith = fabs(
+            GLUTIL_RAD2DEG(
+                GLutil_Vec3f_angle_between(
+                    GLutil_Vec3f_add(cam.pos, cam_basis.front),
+                    cam.up
+                )
+            )
+        );
+        if ( 1.0f < zenith && zenith < 180.0f ) {
+            rotated_x = GLutil_Vec3f_rotate_around_axis(rotated_x, cam_basis.right, theta);
+            rotated_y = rotated_x;
+        }
+        rotated_y = GLutil_Vec3f_rotate_around_axis(rotated_y, cam.up , phi);
+
+        glutil->camera.target = GLutil_Vec3f_add(cam.pos, rotated_y);
     }
 
-    if ( glutil->input.arrow_down.pressed ) {
-        Vec3f dir = Vec3f_sub(camtrg, campos);
-        dir = Vec3f_normalize(dir);
-        Vec3f step = Vec3f_scale(dir, STEP_SIZE);
-        campos = Vec3f_sub(campos, step);
-    };
-
-    glutil->camera.pos = campos;
-    glutil->camera.target = camtrg;
+    GLutil_camera_update_step(glutil, step_size);
 }
+
+
 
 #define GLUTIL_ORBITER_CAM_FOV  90.0f
 #define GLUTIL_ORBITER_CAM_NEAR 0.1f
@@ -2550,6 +2608,56 @@ void GLutil_camera_orbiter(GLutil* glutil)
     };
     glutil->camera = orbiter;
 }
+
+#define GLUTIL_FIRST_PERSON_CAM_FOV  90.0f
+#define GLUTIL_FIRST_PERSON_CAM_NEAR 0.1f
+#define GLUTIL_FIRST_PERSON_CAM_FAR  1000.0f
+void GLutil_camera_first_person(GLutil* glutil)
+{
+    GLutil_Camera fps = {
+        .pos =    { .x = 0.0f, .y = 0.0f, .z = 30.0f },
+        .target = { .x = 0.0f, .y = 0.0f, .z = 0.0f },
+        .up =     { .x = 0.0f, .y = 1.0f, .z = 0.0f },
+
+        .fovX = GLUTIL_FIRST_PERSON_CAM_FOV,
+        .near = GLUTIL_FIRST_PERSON_CAM_NEAR,
+        .far  = GLUTIL_FIRST_PERSON_CAM_FAR,
+
+        .update = GLutil_first_person_camera_update,
+    };
+    glutil->camera = fps; 
+}
+
+void GLutil_camera_update_step(GLutil* g, float step_size)
+{
+// @TODO: abstrair quais teclas correspondem a quais ações.
+
+    if ( g->input.arrow_up.pressed || g->input.w.pressed ) {
+        Vec3f dir = GLutil_camera_direction(&g->camera);
+        Vec3f step = Vec3f_scale(dir, step_size);
+        g->camera.pos = Vec3f_add(g->camera.pos, step);
+    }
+
+    if ( g->input.arrow_down.pressed || g->input.s.pressed ) {
+        Vec3f dir = GLutil_camera_direction(&g->camera);
+        Vec3f step = Vec3f_scale(dir, step_size);
+        g->camera.pos = Vec3f_sub(g->camera.pos, step);
+    };
+
+    if ( g->input.arrow_right.pressed || g->input.d.pressed ) {
+        Vec3f right = GLutil_camera_right(&g->camera);
+        Vec3f step = Vec3f_scale(right, step_size);
+        g->camera.pos = Vec3f_add(g->camera.pos, step);
+    }
+
+    if ( g->input.arrow_left.pressed || g->input.a.pressed ) {
+        Vec3f right = GLutil_camera_right(&g->camera);
+        Vec3f step = Vec3f_scale(right, step_size);
+        g->camera.pos = Vec3f_sub(g->camera.pos, step);
+    }
+}
+
+
 
 void GLutil_camera_update(GLutil* glutil)
 {
@@ -2664,7 +2772,7 @@ GLutil_Camera GLutil_camera_orbit(GLutil_Camera camera, float theta, float phi)
     //        isso causa um "lookAt flip". pesquisar de quais outras formas
     //        costumam contornar essa situação além de simplesmente ignorar
     //        a rotação caso a câmera esteja muito perto do eixo.
-    float zenith = fabs(GLUTIL_RAD2DEG(Vec3f_angle_between(out.pos, out.up)));
+    float zenith = fabs(GLUTIL_RAD2DEG(GLutil_Vec3f_angle_between(out.pos, out.up)));
     if ( 1.0f < zenith && zenith < 180.0f ) {
         rotated_x = GLutil_Vec3f_rotate_around_axis(rotated_x, cam_basis.right, theta);
         rotated_y = rotated_x;

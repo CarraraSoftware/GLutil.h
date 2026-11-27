@@ -21,6 +21,8 @@ int main(void)
     init(&g, WINWIDTH, WINHEIGHT);
     set_target_fps(&g, 60.0f);
 
+    GLutil_camera_first_person(&g);
+
     g.camera.pos.z = 5.0f;
     g.camera.pos.y = 3.0f;
 
